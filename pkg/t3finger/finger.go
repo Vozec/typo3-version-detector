@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/md5"
 	"encoding/hex"
+	"fmt"
 	"net/url"
 	"sort"
 	"strings"
@@ -44,6 +45,9 @@ type VersionResult struct {
 	Markers    []string    `json:"markers,omitempty"` // is-TYPO3 evidence
 	Files      []FileProbe `json:"files,omitempty"`
 	Notes      []string    `json:"notes,omitempty"`
+	// ExtensionsHint lists extension keys passively discovered in the served
+	// HTML (from typo3conf/ext/<key>/ asset URLs) — free, no enumeration needed.
+	ExtensionsHint []string `json:"extensionsHint,omitempty"`
 	// Vulnerabilities lists published core advisories affecting the detected
 	// version. Maybe holds advisories affecting only some candidates when the
 	// version is a range (uncertain until the version is pinned).
@@ -230,6 +234,7 @@ func (f *Fingerprinter) identify(ctx context.Context, base string, res *VersionR
 	}
 
 	markers := map[string]bool{}
+	hints := map[string]bool{}
 	for _, page := range identifyPages {
 		full := base + page
 		r, err := f.get(ctx, full)
@@ -237,6 +242,11 @@ func (f *Fingerprinter) identify(ctx context.Context, base string, res *VersionR
 			continue
 		}
 		body := r.Body
+		// Passively harvest extension keys referenced in the HTML (free, no
+		// enumeration): typo3conf/ext/<key>/… and EXT:<key> resource paths.
+		for _, m := range reExtKeyInPath.FindAllSubmatch(body, -1) {
+			hints[string(m[1])] = true
+		}
 		// TYPO3 session/install cookies are a strong marker even when the HTML
 		// carries no "powered by" comment or generator tag.
 		for _, sc := range r.Header.Values("Set-Cookie") {
@@ -300,6 +310,10 @@ func (f *Fingerprinter) identify(ctx context.Context, base string, res *VersionR
 		res.Markers = append(res.Markers, m)
 	}
 	sort.Strings(res.Markers)
+	for k := range hints {
+		res.ExtensionsHint = append(res.ExtensionsHint, k)
+	}
+	sort.Strings(res.ExtensionsHint)
 	return assets
 }
 
@@ -551,10 +565,14 @@ func (f *Fingerprinter) summarize(res *VersionResult, exact string) {
 		} else {
 			res.Confidence = "low"
 		}
+		// Explain WHY it's a band, not a single version.
+		if matched > 0 {
+			res.Notes = append(res.Notes, fmt.Sprintf("version is a %d-release band because the assets the target serves are byte-identical across %s–%s (TYPO3 didn't change them in those patches) — no exposed asset discriminates further", len(res.Candidates), lo, hi))
+		}
 		// If the range butts up against the newest version the DB knows, the
 		// real target may be a patch released after the DB was built.
 		if newest := f.DB.Newest(); newest != "" && hi == newest {
-			res.Notes = append(res.Notes, "range top ("+hi+") is the newest version in the DB — the target may be a newer patch; run `t3scan builddb` to refresh")
+			res.Notes = append(res.Notes, "range top ("+hi+") is the newest version in the DB — the target may be an even newer patch; run `t3scan builddb` to refresh")
 		}
 	}
 }

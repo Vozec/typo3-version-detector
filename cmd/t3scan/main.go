@@ -21,6 +21,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"strconv"
 	"strings"
 )
 
@@ -149,4 +150,116 @@ func cCyan(s string) string   { return sgr("36", s) }
 
 func kv(label, value string) {
 	fmt.Printf("  %s  %s\n", cDim(fmt.Sprintf("%-16s", label)), value)
+}
+
+// termWidth returns the usable terminal width (from $COLUMNS), default 100.
+func termWidth() int {
+	if s := os.Getenv("COLUMNS"); s != "" {
+		if n, err := strconv.Atoi(strings.TrimSpace(s)); err == nil && n > 20 {
+			return n
+		}
+	}
+	return 100
+}
+
+// kvWrap prints "label  item · item · …" wrapping onto aligned continuation
+// lines so a long list (evidence, deps, hints) never runs off the screen.
+func kvWrap(label string, items []string, sep string) {
+	if len(items) == 0 {
+		return
+	}
+	const indent = 20 // 2 + 16 label + 2
+	width := termWidth() - indent
+	if width < 24 {
+		width = 24
+	}
+	var lines []string
+	cur := ""
+	for _, it := range items {
+		add := it
+		if cur != "" {
+			add = sep + it
+		}
+		if dispLen(cur)+dispLen(add) > width && cur != "" {
+			lines = append(lines, cur)
+			cur = it
+		} else {
+			cur += add
+		}
+	}
+	if cur != "" {
+		lines = append(lines, cur)
+	}
+	fmt.Printf("  %s  %s\n", cDim(fmt.Sprintf("%-16s", label)), lines[0])
+	pad := strings.Repeat(" ", indent)
+	for _, l := range lines[1:] {
+		fmt.Printf("%s%s\n", pad, l)
+	}
+}
+
+// dispLen counts visible runes, ignoring ANSI escapes.
+func dispLen(s string) int {
+	n, esc := 0, false
+	for _, r := range s {
+		if esc {
+			if r == 'm' {
+				esc = false
+			}
+			continue
+		}
+		if r == '\x1b' {
+			esc = true
+			continue
+		}
+		n++
+	}
+	return n
+}
+
+// printNote word-wraps a free-text note under a "›" bullet with a hanging
+// indent, so long explanations never run off the screen.
+func printNote(text string) {
+	width := termWidth() - 4
+	if width < 30 {
+		width = 30
+	}
+	words := strings.Fields(text)
+	line := ""
+	first := true
+	flush := func() {
+		if first {
+			fmt.Printf("  %s %s\n", cDim("›"), cDim(line))
+			first = false
+		} else {
+			fmt.Printf("    %s\n", cDim(line))
+		}
+		line = ""
+	}
+	for _, w := range words {
+		if line != "" && len(line)+1+len(w) > width {
+			flush()
+		}
+		if line == "" {
+			line = w
+		} else {
+			line += " " + w
+		}
+	}
+	if line != "" {
+		flush()
+	}
+}
+
+// renderBar returns a redraw-in-place progress line with a unicode bar.
+func renderBar(label string, done, total int) string {
+	if total <= 0 {
+		total = 1
+	}
+	if done > total {
+		done = total
+	}
+	const w = 28
+	filled := done * w / total
+	bar := cCyan(strings.Repeat("█", filled)) + cDim(strings.Repeat("░", w-filled))
+	return fmt.Sprintf("\r\033[K  %s [%s] %3d%%  %d/%d", label, bar, done*100/total, done, total)
 }

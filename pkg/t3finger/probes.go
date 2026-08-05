@@ -61,6 +61,8 @@ var (
 	reAssetComposer = regexp.MustCompile(`(?:href|src)=["']([^"']*/_assets/[0-9a-f]{32}/[^"']*)["']`)
 	// General asset URL harvest (any of the above), used to hash discovered files.
 	reAnyAsset = regexp.MustCompile(`(?:href|src)=["']([^"'?#]+\.(?:js|css|svg|png|gif|ico|json))(?:[?#][^"']*)?["']`)
+	// Extension keys referenced in the HTML: typo3conf/ext/<key>/ or EXT:<key>.
+	reExtKeyInPath = regexp.MustCompile(`(?:typo3conf/ext/|EXT:)([a-z0-9][a-z0-9_]{1,60})`)
 )
 
 // ---- content-based version parsing (exact when the file is exposed) ----

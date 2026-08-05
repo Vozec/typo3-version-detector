@@ -110,7 +110,7 @@ func runExtensions(args []string) {
 		pct := int64(done) * 100 / int64(total)
 		if pct != atomic.LoadInt64(&lastPct) {
 			atomic.StoreInt64(&lastPct, pct)
-			fmt.Fprintf(os.Stderr, "\r\033[K  probing… %d/%d (%d%%)", done, total, pct)
+			fmt.Fprint(os.Stderr, renderBar("extensions", done, total))
 		}
 	}
 
@@ -261,7 +261,7 @@ func advLine(v t3finger.Advisory) string {
 	if v.Severity != "" {
 		sev = cDim(" [" + v.Severity + "]")
 	}
-	return cBold(id) + sev + "  " + cDim(padTrunc(v.Title, 52))
+	return cBold(id) + sev + "  " + cDim(v.Title)
 }
 
 func plural2(n int) string {

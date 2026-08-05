@@ -127,7 +127,7 @@ func printVersion(r *t3finger.VersionResult, verbose bool) {
 	if !r.IsTypo3 {
 		fmt.Printf("  %s\n", cRed("✗ not detected as TYPO3"))
 		for _, n := range r.Notes {
-			fmt.Printf("  %s %s\n", cDim("›"), cDim(n))
+			printNote(n)
 		}
 		return
 	}
@@ -163,7 +163,11 @@ func printVersion(r *t3finger.VersionResult, verbose bool) {
 		}
 	}
 	if len(r.Markers) > 0 {
-		kv("evidence", strings.Join(r.Markers, cDim(" · ")))
+		kvWrap("evidence", r.Markers, cDim(" · "))
+	}
+	if len(r.ExtensionsHint) > 0 {
+		kvWrap(fmt.Sprintf("extensions (%d)", len(r.ExtensionsHint)),
+			r.ExtensionsHint, cDim(" · "))
 	}
 
 	if n := len(r.Vulnerabilities); n > 0 {
@@ -181,35 +185,65 @@ func printVersion(r *t3finger.VersionResult, verbose bool) {
 	}
 
 	if verbose {
-		var served []t3finger.FileProbe
-		for _, fp := range r.Files {
-			served = append(served, fp)
-		}
-		if len(served) > 0 {
-			fmt.Printf("\n  %s\n", cBold("assets probed"))
-			for _, fp := range served {
-				status := cDim(fmt.Sprintf("HTTP %d", fp.Status))
-				if fp.Matched {
-					how := "content"
-					if fp.ByPath {
-						how = "path"
-					}
-					status = cGreen(fmt.Sprintf("✓ %d versions (%s)", len(fp.Versions), how))
-				} else if fp.Status == 200 {
-					status = cYellow("served, not in DB")
-				}
-				hash := cDim("········")
-				if fp.MD5 != "" {
-					hash = cDim(fp.MD5[:8])
-				}
-				fmt.Printf("   %s  %s  %s\n", hash, padTrunc(fp.Path, 52), status)
-			}
-		}
+		printAssets(r)
 	}
 
 	for _, n := range r.Notes {
-		fmt.Printf("  %s %s\n", cDim("›"), cDim(n))
+		printNote(n)
 	}
+}
+
+// printAssets renders the probed assets: the matched ones (the evidence, full
+// path, never truncated) first, then a concise explanation of why the rest
+// didn't map — instead of dumping dozens of noisy "served, not in DB" lines.
+func printAssets(r *t3finger.VersionResult) {
+	var matched []t3finger.FileProbe
+	served, absent := 0, 0
+	for _, fp := range r.Files {
+		switch {
+		case fp.Matched:
+			matched = append(matched, fp)
+		case fp.Status == 200:
+			served++
+		default:
+			absent++
+		}
+	}
+
+	if len(matched) > 0 {
+		fmt.Printf("\n  %s  %s\n", cBold("matched assets"), cDim("(these pinned the version)"))
+		for _, fp := range matched {
+			how := "content"
+			if fp.ByPath {
+				how = "path"
+			}
+			vs := fmt.Sprintf("%s → %s", cDim(fp.MD5[:8]), verSpan(fp.Versions))
+			fmt.Printf("   %s %s\n      %s  %s\n",
+				cGreen("✓"), fp.Path, vs, cDim("("+how+", "+plural(len(fp.Versions), "1 version", fmt.Sprintf("%d versions", len(fp.Versions)))+")"))
+		}
+	}
+
+	if served > 0 {
+		fmt.Printf("\n  %s %s\n", cYellow(fmt.Sprintf("%d assets served but not in the DB.", served)),
+			cDim("Why: their exact bytes aren't catalogued —"))
+		fmt.Printf("     %s\n", cDim("the target likely runs a build newer than the embedded DB, or (composer"))
+		fmt.Printf("     %s\n", cDim("mode) exposes legacy /typo3/sysext/ copies whose content isn't indexed."))
+		fmt.Printf("     %s\n", cDim("Run `t3scan builddb` to refresh, or use `-json` to see every hash."))
+	}
+	if absent > 0 {
+		fmt.Printf("  %s\n", cDim(fmt.Sprintf("%d probed paths were absent (404).", absent)))
+	}
+}
+
+// verSpan renders a version list as "lo – hi" (or the single version).
+func verSpan(vs []string) string {
+	if len(vs) == 0 {
+		return "?"
+	}
+	if len(vs) == 1 {
+		return cCyan(vs[0])
+	}
+	return cCyan(vs[0] + " – " + vs[len(vs)-1])
 }
 
 func severityBreakdown(advs []t3finger.Advisory) string {
@@ -238,6 +272,17 @@ func severityBreakdown(advs []t3finger.Advisory) string {
 }
 
 func printAdvisories(advs []t3finger.Advisory, bullet string) {
+	// Align the CVE id column, then show the FULL title (never truncated).
+	idw := 0
+	for _, a := range advs {
+		id := a.CVE
+		if id == "" {
+			id = a.ID
+		}
+		if len(id) > idw {
+			idw = len(id)
+		}
+	}
 	for _, a := range advs {
 		id := a.CVE
 		if id == "" {
@@ -247,7 +292,7 @@ func printAdvisories(advs []t3finger.Advisory, bullet string) {
 		if a.Severity != "" {
 			sev = cDim(" [" + a.Severity + "]")
 		}
-		fmt.Printf("   %s %s%s  %s\n", bullet, cBold(id), sev, padTrunc(a.Title, 58))
+		fmt.Printf("   %s %s%s  %s\n", bullet, cBold(fmt.Sprintf("%-*s", idw, id)), sev, a.Title)
 	}
 }
 
@@ -329,14 +374,4 @@ func versionRow(r *t3finger.VersionResult) []string {
 		vulns = fmt.Sprintf("~%d", n)
 	}
 	return []string{target, ver, r.Confidence, mode, vulns, r.Method}
-}
-
-func padTrunc(s string, n int) string {
-	if len(s) == n {
-		return s
-	}
-	if len(s) > n {
-		return s[:n-1] + "…"
-	}
-	return s + strings.Repeat(" ", n-len(s))
 }

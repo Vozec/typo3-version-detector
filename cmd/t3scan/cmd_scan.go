@@ -84,9 +84,21 @@ func runScan(args []string) {
 	default:
 		for _, rep := range reports {
 			printVersion(rep.Version, *verbose)
-			if rep.Extensions != nil {
+			switch {
+			case rep.Extensions != nil:
 				fmt.Printf("\n%s %s\n", cCyan("▸"), cBold("extensions"))
 				printExtensions(rep.Extensions, false)
+			case rep.Version.IsTypo3:
+				// Make the -ext opt-in discoverable — this is why "no plugins".
+				hint := "9,289-key TER catalogue"
+				if rep.Version.Mode == t3finger.ModeComposer {
+					hint = "~4,400 Composer packages via /_assets/"
+				}
+				fmt.Printf("\n  %s %s\n", cYellow("extensions       not scanned —"),
+					cBold("add -ext to enumerate the "+hint))
+				if n := len(rep.Version.ExtensionsHint); n > 0 {
+					fmt.Printf("     %s\n", cDim(fmt.Sprintf("(%d were seen passively in the HTML, shown above)", n)))
+				}
 			}
 		}
 	}
@@ -163,7 +175,7 @@ func scanOneTarget(ctx context.Context, f *t3finger.Fingerprinter, target string
 			pct := int64(done) * 100 / int64(total)
 			if pct != atomic.LoadInt64(&lastPct) {
 				atomic.StoreInt64(&lastPct, pct)
-				fmt.Fprintf(os.Stderr, "\r\033[K  enumerating extensions… %d/%d (%d%%)", done, total, pct)
+				fmt.Fprint(os.Stderr, renderBar("extensions", done, total))
 			}
 		}
 		if chosen == "legacy" {

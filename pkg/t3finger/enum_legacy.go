@@ -265,6 +265,7 @@ func (f *Fingerprinter) EnumerateExtensionsLegacy(ctx context.Context, target st
 				}
 			}
 		}
+		f.annotateExtFreshness(&ext, entry)
 		res.Extensions = append(res.Extensions, ext)
 	}
 	return res, nil
@@ -278,7 +279,7 @@ func (f *Fingerprinter) extVersionByHash(ctx context.Context, extBase string, en
 	if len(disc) == 0 {
 		return nil
 	}
-	const maxFiles = 8
+	const maxFiles = 18
 	if len(disc) > maxFiles {
 		disc = disc[:maxFiles]
 	}

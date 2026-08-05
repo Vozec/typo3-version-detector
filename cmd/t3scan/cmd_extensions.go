@@ -22,6 +22,8 @@ func runExtensions(args []string) {
 	proxy := fs.String("proxy", "", "route through a proxy (http://, https:// or socks5://)")
 	verbose := fs.Bool("v", false, "verbose: also print baseline/mode notes")
 	wordlist := fs.String("w", "", "candidate list file (default: bundled list for the chosen mode)")
+	extSel := fs.String("e", "", "scan only these extension(s): comma-separated names/keys, or a file of them (one per line)")
+	live := fs.Bool("live-versions", false, "query Packagist for each found extension's newest release (else use the DB snapshot)")
 	mode := fs.String("mode", "auto", "enumeration mode: auto | composer | legacy")
 	conc := fs.Int("t", 16, "concurrent requests (threads)")
 	rate := fs.Float64("rate", 20, "max requests per second (0 = unlimited)")
@@ -73,18 +75,27 @@ func runExtensions(args []string) {
 		}
 	}
 
-	// Load the right candidate list for the mode.
+	// Load the candidate list: an explicit -e selection (single ext or a file of
+	// them) overrides the full bundled wordlist.
 	var packages []string
-	src := *wordlist
-	if chosen == "legacy" {
+	var src string
+	if *extSel != "" {
+		packages = resolveSelectors(f, chosen, parseSelectorArg(*extSel))
+		if len(packages) == 0 {
+			fatal(fmt.Errorf("no valid extensions resolved from -e %q (for %s mode)", *extSel, chosen))
+		}
+		src = fmt.Sprintf("%d explicit (-e)", len(packages))
+	} else if chosen == "legacy" {
 		packages, err = t3finger.LoadExtensionKeys(*wordlist)
-		if src == "" {
-			src = "bundled TER key list"
+		src = "bundled TER key list"
+		if *wordlist != "" {
+			src = *wordlist
 		}
 	} else {
 		packages, err = t3finger.LoadExtensionList(*wordlist)
-		if src == "" {
-			src = "bundled Packagist list"
+		src = "bundled Packagist list"
+		if *wordlist != "" {
+			src = *wordlist
 		}
 	}
 	if err != nil {
@@ -133,6 +144,13 @@ func runExtensions(args []string) {
 		}
 	}
 
+	if *live && res != nil {
+		if !*asJSON {
+			fmt.Fprintln(os.Stderr, cDim("  querying Packagist for each extension's newest release…"))
+		}
+		f.RefreshExtensionLatestLive(ctx, res)
+	}
+
 	render := func() {
 		if *asJSON {
 			enc := json.NewEncoder(stdout)
@@ -177,11 +195,14 @@ func printExtensions(res *t3finger.ExtResult, all bool) {
 		plugin   string
 		version  string
 		vColor   func(string) string
+		latest   string
+		lColor   func(string) string
 		cve      string
 		cColor   func(string) string
 		evidence string
 	}
 	var rows []erow
+	anyLatest := false
 	confirmed, unconfirmed := 0, 0
 	for i := range res.Extensions {
 		e := &res.Extensions[i]
@@ -202,6 +223,15 @@ func printExtensions(res *t3finger.ExtResult, all bool) {
 				vc = cCyan
 			}
 		}
+		latest, lc := "-", cDim
+		if e.Latest != "" {
+			anyLatest = true
+			if e.Outdated {
+				latest, lc = "⇡ "+e.Latest, cYellow
+			} else {
+				latest, lc = e.Latest, cGreen
+			}
+		}
 		cve, cc := "-", cDim
 		switch {
 		case len(e.Vulns) > 0:
@@ -216,25 +246,41 @@ func printExtensions(res *t3finger.ExtResult, all bool) {
 		if !e.Confirmed {
 			ev = "stale symlink?"
 		}
-		rows = append(rows, erow{e, e.Package, ver, vc, cve, cc, ev})
+		rows = append(rows, erow{e, e.Package, ver, vc, latest, lc, cve, cc, ev})
 	}
 
 	if len(rows) > 0 {
-		// Column widths from plain text.
-		wP, wV, wC := len("PLUGIN"), len("VERSION"), len("CVE")
+		// Column widths from plain text. The LATEST column is shown only when at
+		// least one extension has a known newest release.
+		wP, wV, wL, wC := len("PLUGIN"), len("VERSION"), len("LATEST"), len("CVE")
 		for _, r := range rows {
 			wP, wV, wC = max(wP, len(r.plugin)), max(wV, len(r.version)), max(wC, len(r.cve))
+			wL = max(wL, dispLen(r.latest))
 		}
-		fmt.Fprintf(stdout, "\n  %s  %s  %s  %s\n",
-			cBold(pad("PLUGIN", wP)), cBold(pad("VERSION", wV)), cBold(pad("CVE", wC)), cBold("EVIDENCE"))
-		fmt.Fprintf(stdout, "  %s\n", cDim(strings.Repeat("─", wP+wV+wC+10+8)))
-		for _, r := range rows {
-			mark := cGreen("+")
-			if !r.e.Confirmed {
-				mark = cYellow("?")
+		if anyLatest {
+			fmt.Fprintf(stdout, "\n  %s  %s  %s  %s  %s\n",
+				cBold(pad("PLUGIN", wP)), cBold(pad("VERSION", wV)), cBold(pad("LATEST", wL)), cBold(pad("CVE", wC)), cBold("EVIDENCE"))
+			fmt.Fprintf(stdout, "  %s\n", cDim(strings.Repeat("─", wP+wV+wL+wC+12+8)))
+			for _, r := range rows {
+				mark := cGreen("+")
+				if !r.e.Confirmed {
+					mark = cYellow("?")
+				}
+				fmt.Fprintf(stdout, "%s %s  %s  %s  %s  %s\n",
+					mark, pad(r.plugin, wP), r.vColor(pad(r.version, wV)), r.lColor(pad(r.latest, wL)), r.cColor(pad(r.cve, wC)), cDim(r.evidence))
 			}
-			fmt.Fprintf(stdout, "%s %s  %s  %s  %s\n",
-				mark, pad(r.plugin, wP), r.vColor(pad(r.version, wV)), r.cColor(pad(r.cve, wC)), cDim(r.evidence))
+		} else {
+			fmt.Fprintf(stdout, "\n  %s  %s  %s  %s\n",
+				cBold(pad("PLUGIN", wP)), cBold(pad("VERSION", wV)), cBold(pad("CVE", wC)), cBold("EVIDENCE"))
+			fmt.Fprintf(stdout, "  %s\n", cDim(strings.Repeat("─", wP+wV+wC+10+8)))
+			for _, r := range rows {
+				mark := cGreen("+")
+				if !r.e.Confirmed {
+					mark = cYellow("?")
+				}
+				fmt.Fprintf(stdout, "%s %s  %s  %s  %s\n",
+					mark, pad(r.plugin, wP), r.vColor(pad(r.version, wV)), r.cColor(pad(r.cve, wC)), cDim(r.evidence))
+			}
 		}
 	}
 
@@ -249,7 +295,10 @@ func printExtensions(res *t3finger.ExtResult, all bool) {
 		}
 		if n := len(r.e.VulnsPossible); n > 0 {
 			fmt.Fprintf(stdout, "     %s %s\n", cYellow("~"),
-				cDim(fmt.Sprintf("%d known CVE%s for this package — version unknown, verify", n, plural2(n))))
+				cDim(fmt.Sprintf("%d known CVE%s for this package — version unknown, verify each applies:", n, plural2(n))))
+			for _, v := range r.e.VulnsPossible {
+				fmt.Fprintf(stdout, "       %s %s\n", cYellow("~"), advLinePossible(v))
+			}
 		}
 	}
 
@@ -265,6 +314,72 @@ func printExtensions(res *t3finger.ExtResult, all bool) {
 		fmt.Fprintf(stdout, ", %s %d errors", cRed("✗"), res.Errors)
 	}
 	fmt.Fprintln(stdout)
+}
+
+// parseSelectorArg turns a -e value into a selector list: if it names an
+// existing file, one selector per line; otherwise a comma-separated inline list.
+func parseSelectorArg(arg string) []string {
+	if isFile(arg) {
+		b, err := os.ReadFile(arg)
+		if err != nil {
+			fatal(err)
+		}
+		var out []string
+		for _, ln := range strings.Split(string(b), "\n") {
+			ln = strings.TrimSpace(ln)
+			if ln != "" && !strings.HasPrefix(ln, "#") {
+				out = append(out, ln)
+			}
+		}
+		return out
+	}
+	var out []string
+	for _, s := range strings.Split(arg, ",") {
+		if s = strings.TrimSpace(s); s != "" {
+			out = append(out, s)
+		}
+	}
+	return out
+}
+
+// resolveSelectors maps user-supplied extension selectors (a composer name like
+// "georgringer/news" or a TER key like "news") to the probe candidates the
+// chosen mode expects: composer mode wants "vendor/name", legacy wants the key.
+// Bare keys/names are resolved through the bundled extension DB.
+func resolveSelectors(f *t3finger.Fingerprinter, mode string, sels []string) []string {
+	var out []string
+	seen := map[string]bool{}
+	add := func(s string) {
+		if s != "" && !seen[s] {
+			seen[s] = true
+			out = append(out, s)
+		}
+	}
+	for _, s := range sels {
+		if mode == "legacy" {
+			if strings.Contains(s, "/") { // composer name → key
+				if k := f.ExtProbes.KeyForComposer(s); k != "" {
+					add(k)
+				} else {
+					fmt.Fprintln(os.Stderr, cYellow("⚠ no TER key known for "+s+" — skipped"))
+				}
+				continue
+			}
+			add(s) // already a key
+			continue
+		}
+		// composer mode: need vendor/name
+		if strings.Contains(s, "/") {
+			add(s)
+			continue
+		}
+		if e, ok := f.ExtProbes.Extensions[s]; ok && e.Composer != "" {
+			add(e.Composer)
+		} else {
+			fmt.Fprintln(os.Stderr, cYellow("⚠ no composer name known for key "+s+" — pass vendor/name, or use -mode legacy"))
+		}
+	}
+	return out
 }
 
 func pad(s string, w int) string {
@@ -316,6 +431,24 @@ func advLine(v t3finger.Advisory) string {
 		sev = cDim(" [" + v.Severity + "]")
 	}
 	return cBold(id) + sev + "  " + cDim(v.Title)
+}
+
+// advLinePossible renders a "possible" advisory: the id + severity + the
+// affected constraint (so the user can check it against the install) + title.
+func advLinePossible(v t3finger.Advisory) string {
+	id := v.CVE
+	if id == "" {
+		id = v.ID
+	}
+	sev := ""
+	if v.Severity != "" {
+		sev = cDim(" [" + v.Severity + "]")
+	}
+	aff := ""
+	if v.Affected != "" {
+		aff = cDim(" (affects " + v.Affected + ")")
+	}
+	return cBold(id) + sev + aff + "  " + cDim(v.Title)
 }
 
 func plural2(n int) string {

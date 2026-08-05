@@ -50,6 +50,13 @@ type Extension struct {
 	// VersionCandidates is the full candidate set when Version is a range (from
 	// static-file hashing) — used for accurate per-candidate CVE assessment.
 	VersionCandidates []string `json:"versionCandidates,omitempty"`
+	// Latest is the newest published version of this extension: from the DB
+	// snapshot (built at DB-build time) or refreshed live with --live-versions.
+	Latest string `json:"latest,omitempty"`
+	// LatestSource is "db" (embedded snapshot) or "live" (queried at scan time).
+	LatestSource string `json:"latestSource,omitempty"`
+	// Outdated is true when the detected version is behind Latest.
+	Outdated bool `json:"outdated,omitempty"`
 	// Requires is the extension's declared dependencies (from the probe DB).
 	Requires map[string]string `json:"requires,omitempty"`
 	// Vulns lists known advisories affecting this extension version (with -cve).
@@ -186,7 +193,8 @@ func (f *Fingerprinter) EnumerateExtensions(ctx context.Context, target string, 
 		// Version by static-file hash: the extension's public assets live under
 		// the same /_assets/<md5>/ prefix (served at <assetURL><pathAfterPublic>),
 		// so we can hash the discriminating files just like a legacy install.
-		if entry := f.ExtProbes.ByComposer(h.pkg); entry != nil {
+		entry := f.ExtProbes.ByComposer(h.pkg)
+		if entry != nil {
 			ext.Requires = entry.Requires
 			if cands := f.extVersionComposer(ctx, assetURL, entry); len(cands) > 0 {
 				ext.Confirmed = true
@@ -199,6 +207,7 @@ func (f *Fingerprinter) EnumerateExtensions(ctx context.Context, target string, 
 				}
 			}
 		}
+		f.annotateExtFreshness(&ext, entry)
 		res.Extensions = append(res.Extensions, ext)
 	}
 	return res, nil
@@ -225,7 +234,7 @@ func (f *Fingerprinter) extVersionComposer(ctx context.Context, assetPrefix stri
 	interSet := false
 	probed := 0
 	for _, dbPath := range disc {
-		if probed >= 8 {
+		if probed >= 18 {
 			break
 		}
 		sub := afterResourcesPublic(dbPath)

@@ -41,6 +41,9 @@ CVEs - all driven by fingerprint databases built from the **official releases (m
 - **Complete extension database** - every TER plugin & theme (**9,289**), with per-version
   static-file hashes and declared dependencies, so the **installed version of any extension**
   is pinned by hashing what the target serves - even when metadata files are blocked.
+- **Per-extension up-to-date check** - each plugin's **newest release** is recorded in the DB
+  (or fetched live with `--live-versions`), so the table flags any extension running behind
+  (`⇡ 14.0.3`). Scan just one extension or a list with `-e news,solr` / `-e list.txt`.
 - **Composer + legacy enumeration** - Composer mode (TYPO3 ≥ 11.4) via the deterministic
   `/_assets/<md5>/` path; legacy via `/typo3conf/ext/`, with **auto-selected marker files**
   (`ext_emconf.php` → `ext_localconf.php` → `ext_tables.php` → `composer.json`) so a host
@@ -100,6 +103,8 @@ host. Existing files are never overwritten — a `-<n>` suffix is added.
 | Flag | Description |
 |------|-------------|
 | `-ext` | (on `scan`) also enumerate installed extensions |
+| `-e <names\|file>` | scan only these extension(s): `news,solr` or a file (one per line) |
+| `--live-versions` | fetch the newest release of TYPO3 / each found extension live (else DB snapshot) |
 | `-mode auto\|composer\|legacy` | extension enumeration mode (default `auto`) |
 | `-cve` | look up known CVEs for the target / found extensions |
 | `-t <n>` | max concurrent requests / threads |
@@ -192,12 +197,17 @@ Everything embedded is regenerable from upstream; rebuild the binary afterwards 
 make db            # core version DB (get.typo3.org releases)
 make extdb-full    # complete extension DB (every plugin+theme, all versions, hashes+deps)
 make advisories    # CVE advisory set
+make releases      # latest-stable-per-branch snapshot (up-to-date check)
 make data          # all of the above, then rebuild the binary
+
+# or, in one command (no make): rebuild every dataset in place, then `go build`
+t3scan rebuild-database          # add -skip-extdb for a fast refresh, -extdb-only for just plugins
 ```
 
 Under the hood: `t3scan builddb`, `t3scan buildextdb -all` (resumable with `-merge`,
-lighter with `-maxversions N`), `t3scan buildadvisories`. Nothing is written to disk during
-a build - archives are streamed and hashed in memory; ELTS releases are gated and skipped.
+lighter with `-maxversions N`), `t3scan buildadvisories`, `t3scan buildreleases`. Nothing is
+written to disk during a build - archives are streamed and hashed in memory; ELTS releases are
+gated and skipped.
 
 ## 🛡️ Nuclei template
 

@@ -64,6 +64,12 @@ func (d *ExtProbeDB) ByComposer(name string) *ExtEntry {
 	return nil
 }
 
+// KeyForComposer returns the TER extension key for a Packagist name, or "".
+func (d *ExtProbeDB) KeyForComposer(name string) string {
+	d.ByComposer(name) // ensure composerIdx is built
+	return d.composerIdx[name]
+}
+
 // LoadExtProbeDB returns the embedded extension DB (decompressing it).
 func LoadExtProbeDB() *ExtProbeDB {
 	db := &ExtProbeDB{Extensions: map[string]ExtEntry{}}

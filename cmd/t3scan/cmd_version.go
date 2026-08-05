@@ -29,6 +29,7 @@ func runVersion(args []string) {
 	force := fs.Bool("f", false, "force: report/enumerate even when classic markers don't confirm TYPO3")
 	fs.BoolVar(force, "force", false, "alias for -f")
 	output := fs.String("o", "", "write output to a file (single target) or directory (list); created if missing")
+	live := fs.Bool("live-versions", false, "query get.typo3.org for the newest release live (else use the embedded snapshot)")
 	timeout := fs.Duration("timeout", 30*time.Second, "per-target timeout")
 	fs.Usage = func() {
 		fmt.Fprintf(os.Stderr, "TYPO3 version detection\n\nUsage:\n  t3scan [flags] <url|file> [<url|file> ...]\n  cat urls.txt | t3scan [flags]\n  t3scan -l urls.txt -o out/\n\nFlags:\n")
@@ -56,6 +57,15 @@ func runVersion(args []string) {
 	}
 	if f.DB.Empty() {
 		fmt.Fprintln(os.Stderr, cYellow("⚠ embedded version DB is empty — run `t3scan builddb` and rebuild; only exact-file reads and markers will work"))
+	}
+	if *live {
+		lctx, lcancel := context.WithTimeout(context.Background(), 30*time.Second)
+		if rel, err := t3finger.FetchReleases(lctx); err == nil && rel != nil {
+			f.Releases = rel
+		} else if !*asJSON {
+			fmt.Fprintln(os.Stderr, cYellow("⚠ live release feed unavailable; using embedded snapshot"))
+		}
+		lcancel()
 	}
 
 	results := scanTargets(f, targets, *conc, *timeout)

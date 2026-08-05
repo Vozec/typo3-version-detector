@@ -98,6 +98,11 @@ db-rebuild: db build
 data: wordlist advisories releases db extdb-full build
 	@echo "all datasets rebuilt and embedded"
 
+## rebuild-database: refresh every dataset in one command (= data, minus build)
+.PHONY: rebuild-database
+rebuild-database:
+	go run $(PKG) rebuild-database
+
 # ---- convenience ----
 
 ## run: detect a target — make run URL=https://example.com/

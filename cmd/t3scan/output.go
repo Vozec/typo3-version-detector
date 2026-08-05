@@ -14,8 +14,8 @@ import (
 var stdout io.Writer = os.Stdout
 
 // normalizeHost turns a target URL into a filesystem-safe file stem from its
-// host AND path, e.g. "https://Alumneum.UniBas.ch/de/foo" ->
-// "alumneum.unibas.ch_de_foo". The dotted host is kept so the name ends in
+// host AND path, e.g. "https://Example.COM/de/foo" ->
+// "example.com_de_foo". The dotted host is kept so the name ends in
 // ".<tld>" (then the path, then the extension).
 func normalizeHost(target string) string {
 	t := strings.TrimSpace(target)

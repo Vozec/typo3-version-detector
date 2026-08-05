@@ -32,6 +32,8 @@ func runScan(args []string) {
 	doExt := fs.Bool("ext", false, "also enumerate installed extensions (many requests)")
 	mode := fs.String("mode", "auto", "extension mode when -ext: auto | composer | legacy")
 	wordlist := fs.String("w", "", "extension candidate list (with -ext)")
+	extSel := fs.String("e", "", "with -ext: scan only these extension(s) — comma-separated names/keys, or a file of them")
+	live := fs.Bool("live-versions", false, "query upstream for the newest release of TYPO3 and each found extension (else use the embedded snapshot)")
 	cve := fs.Bool("cve", true, "map versions to known CVEs")
 	failOnVuln := fs.Bool("fail-on-vuln", false, "exit non-zero (2) if any confirmed vulnerability is found")
 	force := fs.Bool("f", false, "force: scan even when classic markers don't confirm TYPO3")
@@ -70,7 +72,17 @@ func runScan(args []string) {
 	ctx, cancel := context.WithTimeout(context.Background(), *timeout)
 	defer cancel()
 
-	opts := scanOpts{doExt: *doExt, mode: *mode, wordlist: *wordlist, cve: *cve, asJSON: *asJSON, force: *force}
+	// --live-versions: pull the current release feed so the core "latest" is live
+	// rather than the embedded snapshot (extensions are refreshed per-target).
+	if *live {
+		if rel, err := t3finger.FetchReleases(ctx); err == nil && rel != nil {
+			f.Releases = rel
+		} else if !*asJSON {
+			fmt.Fprintln(os.Stderr, cYellow("⚠ live release feed unavailable; using embedded snapshot"))
+		}
+	}
+
+	opts := scanOpts{doExt: *doExt, mode: *mode, wordlist: *wordlist, extSel: *extSel, cve: *cve, asJSON: *asJSON, force: *force, live: *live}
 	reports := make([]*scanReport, 0, len(targets))
 	for _, target := range targets {
 		if !*asJSON && len(targets) > 1 {
@@ -140,9 +152,11 @@ type scanOpts struct {
 	doExt    bool
 	mode     string
 	wordlist string
+	extSel   string
 	cve      bool
 	asJSON   bool
 	force    bool
+	live     bool
 }
 
 func scanOneTarget(ctx context.Context, f *t3finger.Fingerprinter, target string, o scanOpts) *scanReport {
@@ -163,7 +177,9 @@ func scanOneTarget(ctx context.Context, f *t3finger.Fingerprinter, target string
 			}
 		}
 		var pkgs []string
-		if chosen == "legacy" {
+		if o.extSel != "" {
+			pkgs = resolveSelectors(f, chosen, parseSelectorArg(o.extSel))
+		} else if chosen == "legacy" {
 			pkgs, _ = t3finger.LoadExtensionKeys(o.wordlist)
 		} else {
 			pkgs, _ = t3finger.LoadExtensionList(o.wordlist)
@@ -189,6 +205,9 @@ func scanOneTarget(ctx context.Context, f *t3finger.Fingerprinter, target string
 		}
 		if o.cve && rep.Extensions != nil {
 			_ = f.AnnotateExtensionCVEs(ctx, rep.Extensions)
+		}
+		if o.live && rep.Extensions != nil {
+			f.RefreshExtensionLatestLive(ctx, rep.Extensions)
 		}
 	}
 	return rep

@@ -46,6 +46,8 @@ func main() {
 		runBuildExtDB(os.Args[2:])
 	case "buildreleases":
 		runBuildReleases(os.Args[2:])
+	case "rebuild-database", "rebuilddb":
+		runRebuildDatabase(os.Args[2:])
 	case "-h", "--help", "help":
 		usage()
 	default:

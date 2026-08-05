@@ -1,4 +1,4 @@
-# 🔎 typo3-scanner
+# 🔎 typo3-version-detector
 
 **Fast TYPO3 fingerprinter - core version, extensions, versions, dependencies & CVEs in seconds.**
 
@@ -58,14 +58,14 @@ CVEs - all driven by fingerprint databases built from the **official releases (m
 ## 📦 Install
 
 ```bash
-go install github.com/Vozec/typo3-scanner/cmd/t3scan@latest
+go install github.com/Vozec/typo3-version-detector/cmd/t3scan@latest
 ```
 
 Or build from source (all databases are embedded - the binary is self-contained):
 
 ```bash
-git clone https://github.com/Vozec/typo3-scanner
-cd typo3-scanner
+git clone https://github.com/Vozec/typo3-version-detector
+cd typo3-version-detector
 make build      # -> ./t3scan
 ```
 
@@ -124,7 +124,7 @@ is pinned from the bytes the target serves, independent of any metadata file.
 ## 📚 SDK
 
 ```go
-import "github.com/Vozec/typo3-scanner/pkg/t3finger"
+import "github.com/Vozec/typo3-version-detector/pkg/t3finger"
 
 f, _ := t3finger.New()
 

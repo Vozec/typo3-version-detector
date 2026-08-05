@@ -28,7 +28,7 @@ func FetchExtensionKeys(ctx context.Context) ([]string, error) {
 	if err != nil {
 		return nil, err
 	}
-	req.Header.Set("User-Agent", "t3scan/1.0 (+typo3-scanner)")
+	req.Header.Set("User-Agent", "t3scan/1.0 (+typo3-version-detector)")
 	resp, err := c.Do(req)
 	if err != nil {
 		return nil, err

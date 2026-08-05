@@ -68,7 +68,7 @@ func WithConcurrency(n int) Option { return func(f *Fingerprinter) { f.ProbeConc
 // missing/empty DB is tolerated (extension enumeration needs no DB).
 func New(opts ...Option) (*Fingerprinter, error) {
 	f := &Fingerprinter{
-		UserAgent:        "t3scan/1.0 (+typo3-scanner; authorized security testing)",
+		UserAgent:        "t3scan/1.0 (+typo3-version-detector; authorized security testing)",
 		ProbeConcurrency: 16,
 	}
 	if db, err := LoadEmbedded(); err == nil {

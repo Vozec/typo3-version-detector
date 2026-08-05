@@ -11,7 +11,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Vozec/typo3-scanner/pkg/t3finger"
+	"github.com/Vozec/typo3-version-detector/pkg/t3finger"
 )
 
 func runBuildExtDB(args []string) {

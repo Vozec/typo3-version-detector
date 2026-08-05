@@ -9,7 +9,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/Vozec/typo3-scanner/pkg/t3finger"
+	"github.com/Vozec/typo3-version-detector/pkg/t3finger"
 )
 
 // scanReport is the unified result of a full scan: core version + CVEs, and

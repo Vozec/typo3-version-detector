@@ -1,0 +1,1037 @@
+{
+"package": "typo3/cms-core",
+"advisories": [
+{
+"id": "PKSA-138z-v62j-p84r",
+"cve": "",
+"title": "Cross-Site Scripting in Link Handling",
+"affected": ">=10.0.0,<10.2.1|>=8.0.0,<8.7.30|>=9.0.0,<9.5.12",
+"link": "https://typo3.org/security/advisory/typo3-core-sa-2019-022",
+"severity": "medium"
+},
+{
+"id": "PKSA-146t-35pv-hv8w",
+"cve": "CVE-2021-41113",
+"title": "TYPO3-CORE-SA-2021-014: Cross-Site-Request-Forgery in Backend URI Handling",
+"affected": ">=11.2.0,<11.5.0",
+"link": "https://typo3.org/security/advisory/typo3-core-sa-2021-014",
+"severity": "high"
+},
+{
+"id": "PKSA-1c5b-sjdg-7rc3",
+"cve": "CVE-2021-32669",
+"title": "TYPO3-CORE-SA-2021-011: Cross-Site Scripting in Backend Grid View",
+"affected": ">=10.0.0,<10.4.18|>=11.0.0,<11.3.1|>=9.0.0,<9.5.28",
+"link": "https://typo3.org/security/advisory/typo3-core-sa-2021-011",
+"severity": "medium"
+},
+{
+"id": "PKSA-1f5c-bp4y-tqft",
+"cve": "CVE-2022-31046",
+"title": "TYPO3-CORE-SA-2022-001: Information Disclosure via Export Module",
+"affected": ">=10.0.0,<10.4.29|>=11.0.0,<11.5.11",
+"link": "https://typo3.org/security/advisory/typo3-core-sa-2022-001",
+"severity": "medium"
+},
+{
+"id": "PKSA-1gz3-81f5-ttyn",
+"cve": "CVE-2010-5104",
+"title": "TYPO3 Sensitive Information Disclosure via escapeStrForLike method",
+"affected": ">=4.4.0,<4.4.5|>=4.3.0,<4.3.9|>=4.2.0,<4.2.16",
+"link": "https://github.com/advisories/GHSA-xgc2-q928-27wv",
+"severity": "medium"
+},
+{
+"id": "PKSA-1rbp-fbhh-b1cd",
+"cve": "CVE-2020-15241",
+"title": "Cross-Site Scripting in Fluid Engine",
+"affected": ">=8.0.0,<8.7.25|>=9.0.0,<9.5.6",
+"link": "https://typo3.org/security/advisory/typo3-core-sa-2019-013",
+"severity": "medium"
+},
+{
+"id": "PKSA-2q76-3mvw-8hk3",
+"cve": "",
+"title": "Security Misconfiguration in Install Tool Cookie",
+"affected": ">=8.0.0,<8.7.21|>=9.0.0,<9.5.2",
+"link": "https://typo3.org/security/advisory/typo3-core-sa-2018-009",
+"severity": "medium"
+},
+{
+"id": "PKSA-2ssc-6m7w-s9xh",
+"cve": "CVE-2025-47940",
+"title": "TYPO3 Allows Privilege Escalation to System Maintainer",
+"affected": ">=13.0.0,<=13.4.11|>=12.0.0,<=12.4.30|>=11.0.0,<=11.5.43|>=10.4.0,<=10.4.49",
+"link": "https://github.com/advisories/GHSA-6frx-j292-c844",
+"severity": "high"
+},
+{
+"id": "PKSA-2xbd-k6f8-vc7m",
+"cve": "CVE-2019-19849",
+"title": "Insecure Deserialization in Query Generator & Query View",
+"affected": ">=10.0.0,<10.2.1|>=8.0.0,<8.7.30|>=9.0.0,<9.5.12",
+"link": "https://typo3.org/security/advisory/typo3-core-sa-2019-026",
+"severity": "high"
+},
+{
+"id": "PKSA-2ynr-pyxr-sckk",
+"cve": "CVE-2020-26227",
+"title": "TYPO3-CORE-SA-2020-010: Cross-Site Scripting in Fluid view helpers",
+"affected": ">=10.0.0,<10.4.10|>=9.0.0,<9.5.23|>=8.7.0,<8.7.38",
+"link": "https://typo3.org/security/advisory/typo3-core-sa-2020-010",
+"severity": "medium"
+},
+{
+"id": "PKSA-2yr3-by9d-r1gh",
+"cve": "CVE-2026-11607",
+"title": "TYPO3-CORE-SA-2026-019: Broken Access Control in Form Framework",
+"affected": "<10.4.57|>=11.0.0,<11.5.51|>=12.0.0,<12.4.46|>=13.0.0,<13.4.31|>=14.0.0,<14.3.3",
+"link": "https://typo3.org/security/advisory/typo3-core-sa-2026-019",
+"severity": "high"
+},
+{
+"id": "PKSA-32mm-z25f-2ysj",
+"cve": "CVE-2026-47351",
+"title": "TYPO3-CORE-SA-2026-014: Broken Access Control in Clipboard",
+"affected": "<10.4.57|>=11.0.0,<11.5.51|>=12.0.0,<12.4.46|>=13.0.0,<13.4.31|>=14.0.0,<14.3.3",
+"link": "https://typo3.org/security/advisory/typo3-core-sa-2026-014",
+"severity": "medium"
+},
+{
+"id": "PKSA-3886-d5zt-qwrh",
+"cve": "",
+"title": "Cross-Site Scripting in Form Framework",
+"affected": ">=8.0.0,<8.7.23|>=9.0.0,<9.5.4",
+"link": "https://typo3.org/security/advisory/typo3-core-sa-2019-007",
+"severity": "medium"
+},
+{
+"id": "PKSA-39st-t16f-w2cm",
+"cve": "",
+"title": "Information Disclosure in Page Tree",
+"affected": ">=9.0.0,<9.5.6",
+"link": "https://typo3.org/security/advisory/typo3-core-sa-2019-009",
+"severity": "medium"
+},
+{
+"id": "PKSA-3gg2-48j5-46ky",
+"cve": "CVE-2024-55892",
+"title": "TYPO3 Potential Open Redirect via Parsing Differences",
+"affected": ">=13.0.0,<=13.4.2|>=12.0.0,<=12.4.24|>=11.0.0,<=11.5.41|>=10.0.0,<=10.4.47|>=9.0.0,<=9.5.48",
+"link": "https://github.com/advisories/GHSA-2fx5-pggv-6jjr",
+"severity": "medium"
+},
+{
+"id": "PKSA-3p3s-8w1v-x6b3",
+"cve": "CVE-2022-23502",
+"title": "TYPO3-CORE-SA-2022-014: Insufficient Session Expiration after Password Reset",
+"affected": ">=10.0.0,<10.4.33|>=11.0.0,<11.5.20|>=12.0.0,<12.1.1",
+"link": "https://typo3.org/security/advisory/typo3-core-sa-2022-014",
+"severity": "medium"
+},
+{
+"id": "PKSA-443h-dk5w-qm2g",
+"cve": "CVE-2024-34357",
+"title": "TYPO3 vulnerable to Cross-Site Scripting in the ShowImageController",
+"affected": ">=13.0.0,<=13.1.0|>=12.0.0,<=12.4.14|>=11.0.0,<=11.5.36|>=10.0.0,<=10.4.44|>=9.0.0,<=9.5.47",
+"link": "https://github.com/advisories/GHSA-hw6c-6gwq-3m3m",
+"severity": "medium"
+},
+{
+"id": "PKSA-44gr-w8s1-1nzt",
+"cve": "",
+"title": "Security Misconfiguration in User Session Handling",
+"affected": ">=8.0.0,<8.7.25|>=9.0.0,<9.5.6",
+"link": "https://typo3.org/security/advisory/typo3-core-sa-2019-011",
+"severity": "medium"
+},
+{
+"id": "PKSA-4jxn-z7kk-hs67",
+"cve": "",
+"title": "Cross-Site Scripting in Form Framework validation handling",
+"affected": ">=10.0.0,<10.2.1|>=8.0.0,<8.7.30|>=9.0.0,<9.5.12",
+"link": "https://typo3.org/security/advisory/typo3-core-sa-2019-021",
+"severity": "high"
+},
+{
+"id": "PKSA-4kgv-d12j-68gk",
+"cve": "CVE-2022-31049",
+"title": "TYPO3-CORE-SA-2022-004: Cross-Site Scripting in Frontend Login Mailer",
+"affected": ">=10.0.0,<10.4.29|>=11.0.0,<11.5.11",
+"link": "https://typo3.org/security/advisory/typo3-core-sa-2022-004",
+"severity": "medium"
+},
+{
+"id": "PKSA-536c-fstd-1vzp",
+"cve": "CVE-2009-3633",
+"title": "TYPO3 API function vulnerable to Cross-site Scripting",
+"affected": ">=4.3alpha1,<4.3beta2|>=4.2.0,<4.2.10|>=4.1.0,<4.1.13|<=4.0.13",
+"link": "https://github.com/advisories/GHSA-m7rg-85g8-28m9",
+"severity": "medium"
+},
+{
+"id": "PKSA-53xp-pxrc-sbvb",
+"cve": "",
+"title": "Insecure Deserialization & Arbitrary Code Execution in TYPO3 CMS",
+"affected": ">=8.0.0,<8.7.17|>=9.0.0,<9.3.2",
+"link": "https://typo3.org/security/advisory/typo3-core-sa-2018-002",
+"severity": "medium"
+},
+{
+"id": "PKSA-5b2v-fk9x-ph9d",
+"cve": "CVE-2020-26229",
+"title": "TYPO3-CORE-SA-2020-012: XML External Entity in Dashboard Widget",
+"affected": ">=10.0.0,<10.4.10",
+"link": "https://typo3.org/security/advisory/typo3-core-sa-2020-012",
+"severity": "low"
+},
+{
+"id": "PKSA-5y7r-7h1g-qrym",
+"cve": "CVE-2018-17960",
+"title": "Cross-Site Scripting in CKEditor",
+"affected": ">=8.0.0,<8.7.21|>=9.0.0,<9.5.2",
+"link": "https://typo3.org/security/advisory/typo3-core-sa-2018-005",
+"severity": "medium"
+},
+{
+"id": "PKSA-645k-592v-1hn5",
+"cve": "CVE-2013-7081",
+"title": "TYPO3 Improper Access Control vulnerability",
+"affected": ">=6.1.0,<6.1.6|>=6.0.0,<6.0.11|>=4.7.0,<4.7.16|>=4.5.0,<4.5.31",
+"link": "https://github.com/advisories/GHSA-r674-mc9p-hvw5",
+"severity": "medium"
+},
+{
+"id": "PKSA-6bzd-gjbs-96f6",
+"cve": "",
+"title": "Information Disclosure in User Authentication",
+"affected": ">=9.0.0,<9.5.6",
+"link": "https://typo3.org/security/advisory/typo3-core-sa-2019-010",
+"severity": "medium"
+},
+{
+"id": "PKSA-6d7x-2gs8-wr59",
+"cve": "CVE-2025-47938",
+"title": "TYPO3 Unverified Password Change for Backend Users",
+"affected": ">=13.0.0,<=13.4.11|>=12.0.0,<=12.4.30|>=11.0.0,<=11.5.43|>=10.0.0,<=10.4.49|>=9.0.0,<=9.5.50",
+"link": "https://github.com/advisories/GHSA-3jrg-97f3-rqh9",
+"severity": "low"
+},
+{
+"id": "PKSA-6jfs-jhtj-72x7",
+"cve": "CVE-2026-47346",
+"title": "TYPO3-CORE-SA-2026-008: Broken Access Control in Form Framework",
+"affected": "<10.4.57|>=11.0.0,<11.5.51|>=12.0.0,<12.4.46|>=13.0.0,<13.4.31|>=14.0.0,<14.3.3",
+"link": "https://typo3.org/security/advisory/typo3-core-sa-2026-008",
+"severity": "high"
+},
+{
+"id": "PKSA-6rbt-6s1d-gvry",
+"cve": "CVE-2018-14041",
+"title": "Cross-Site Scripting in Bootstrap CSS toolkit",
+"affected": ">=8.0.0,<8.7.23|>=9.0.0,<9.5.4",
+"link": "https://typo3.org/security/advisory/typo3-core-sa-2019-006",
+"severity": "medium"
+},
+{
+"id": "PKSA-769c-kbh8-sdc8",
+"cve": "CVE-2020-11067",
+"title": "TYPO3-CORE-SA-2020-005: Insecure Deserialization in Backend User Settings",
+"affected": ">=10.0.0,<10.4.2|>=9.0.0,<9.5.17",
+"link": "https://typo3.org/security/advisory/typo3-core-sa-2020-005",
+"severity": "high"
+},
+{
+"id": "PKSA-7dr7-npxr-1nyj",
+"cve": "CVE-2024-34355",
+"title": "TYPO3 vulnerable to an HTML Injection in the History Module",
+"affected": ">=13.0.0,<=13.1.0",
+"link": "https://github.com/advisories/GHSA-xjwx-78x7-q6jc",
+"severity": "low"
+},
+{
+"id": "PKSA-7y51-jdq5-j3jz",
+"cve": "CVE-2013-7077",
+"title": "TYPO3 Cross-site scripting (XSS) vulnerability in the Backend User Administration Module ",
+"affected": ">=6.1,<6.1.7|>=6.0,<6.0.12",
+"link": "https://github.com/advisories/GHSA-5cmc-r23m-hvrr",
+"severity": "medium"
+},
+{
+"id": "PKSA-83hy-ynvj-7pfq",
+"cve": "CVE-2023-38499",
+"title": "Information Disclosure due to Out-of-scope Site Resolution",
+"affected": ">=12.0.0,<12.4.4|>=11.0.0,<11.5.30|>=10.0.0,<10.4.39|>=9.4.0,<9.5.42",
+"link": "https://github.com/advisories/GHSA-jq6g-4v5m-wm9r",
+"severity": "low"
+},
+{
+"id": "PKSA-8d3v-z4d4-n11g",
+"cve": "",
+"title": "Cross-Site Scripting in Frontend User Login",
+"affected": ">=8.0.0,<8.7.21|>=9.0.0,<9.5.2",
+"link": "https://typo3.org/security/advisory/typo3-core-sa-2018-008",
+"severity": "high"
+},
+{
+"id": "PKSA-8qyp-kq69-8m7s",
+"cve": "CVE-2020-11065",
+"title": "TYPO3-CORE-SA-2020-003: Cross-Site Scripting in Link Handling",
+"affected": ">=10.0.0,<10.4.2|>=9.0.0,<9.5.17",
+"link": "https://typo3.org/security/advisory/typo3-core-sa-2020-003",
+"severity": "medium"
+},
+{
+"id": "PKSA-8svt-p3nh-mpwn",
+"cve": "CVE-2021-21359",
+"title": "TYPO3-CORE-SA-2021-005: Denial of Service in Page Error Handling",
+"affected": ">=10.0.0,<10.4.14|>=11.0.0,<11.1.1|>=9.0.0,<9.5.25",
+"link": "https://typo3.org/security/advisory/typo3-core-sa-2021-005",
+"severity": "medium"
+},
+{
+"id": "PKSA-8vkj-4d3h-x586",
+"cve": "CVE-2024-34356",
+"title": "TYPO3 vulnerable to Cross-Site Scripting in the Form Manager Module",
+"affected": ">=13.0.0,<=13.1.0|>=12.0.0,<=12.4.14|>=11.0.0,<=11.5.36|>=10.0.0,<=10.4.44|>=9.0.0,<=9.5.47",
+"link": "https://github.com/advisories/GHSA-v6mw-h7w6-59w3",
+"severity": "medium"
+},
+{
+"id": "PKSA-99mg-htb6-c272",
+"cve": "CVE-2024-25121",
+"title": "TYPO3 vulnerable to Improper Access Control Persisting File Abstraction Layer Entities via Data Handler",
+"affected": "=13.0.0|>=12.0.0,<=12.4.10|>=11.0.0,<=11.5.34|>=10.0.0,<=10.4.42|>=9.0.0,<=9.5.45|>=8.0.0,<=8.7.56",
+"link": "https://github.com/advisories/GHSA-rj3x-wvc6-5j66",
+"severity": "high"
+},
+{
+"id": "PKSA-b1zy-bnzv-mr97",
+"cve": "CVE-2013-1843",
+"title": "TYPO3 Open redirect vulnerability in the Access tracking mechanism ",
+"affected": ">=6.0.0,<6.0.3|>=4.7.0,<4.7.9|>=4.6.0,<4.6.17|>=4.5.0,<4.5.24",
+"link": "https://github.com/advisories/GHSA-7gxq-5qqc-v3fc",
+"severity": "medium"
+},
+{
+"id": "PKSA-b5m3-ttcx-cz18",
+"cve": "CVE-2025-47937",
+"title": "TYPO3 Allows Information Disclosure via DBAL Restriction Handling",
+"affected": ">=13.0.0,<=13.4.11|>=12.0.0,<=12.4.30|>=11.0.0,<=11.5.43|>=10.0.0,<=10.4.49|>=9.0.0,<=9.5.50",
+"link": "https://github.com/advisories/GHSA-x8pv-fgxp-8v3x",
+"severity": "low"
+},
+{
+"id": "PKSA-bmvt-8jd1-qp5w",
+"cve": "CVE-2021-21338",
+"title": "TYPO3-CORE-SA-2021-001: Open Redirection in Login Handling",
+"affected": ">=10.0.0,<10.4.14|>=11.0.0,<11.1.1|>=9.0.0,<9.5.25",
+"link": "https://typo3.org/security/advisory/typo3-core-sa-2021-001",
+"severity": "medium"
+},
+{
+"id": "PKSA-bww2-xt9d-zd9m",
+"cve": "CVE-2013-1842",
+"title": "TYPO3 SQL injection vulnerability in the Extbase Framework",
+"affected": ">=6.0.0,<6.0.3|>=4.7.0,<4.7.9|>=4.6.0,<4.6.17|>=4.5.0,<=4.5.23",
+"link": "https://github.com/advisories/GHSA-m64j-j252-jxmr",
+"severity": "high"
+},
+{
+"id": "PKSA-bzt2-2962-49bj",
+"cve": "CVE-2026-47349",
+"title": "TYPO3-CORE-SA-2026-011: Broken Access Control in Recycler",
+"affected": "<10.4.57|>=11.0.0,<11.5.51|>=12.0.0,<12.4.46|>=13.0.0,<13.4.31|>=14.0.0,<14.3.3",
+"link": "https://typo3.org/security/advisory/typo3-core-sa-2026-011",
+"severity": "medium"
+},
+{
+"id": "PKSA-ccxj-fgkz-pynv",
+"cve": "CVE-2022-23503",
+"title": "TYPO3-CORE-SA-2022-015: Arbitrary Code Execution via Form Framework",
+"affected": ">=10.0.0,<10.4.33|>=11.0.0,<11.5.20|>=12.0.0,<12.1.1",
+"link": "https://typo3.org/security/advisory/typo3-core-sa-2022-015",
+"severity": "high"
+},
+{
+"id": "PKSA-cqmn-5jhg-hqxx",
+"cve": "CVE-2020-26228",
+"title": "TYPO3-CORE-SA-2020-011: Cleartext storage of session identifier",
+"affected": ">=10.0.0,<10.4.10|>=9.0.0,<9.5.23|>=8.7.0,<8.7.38",
+"link": "https://typo3.org/security/advisory/typo3-core-sa-2020-011",
+"severity": "high"
+},
+{
+"id": "PKSA-ctc9-m9tc-zx87",
+"cve": "",
+"title": "Cross-Site Scripting in Fluid ViewHelpers",
+"affected": ">=8.0.0,<8.7.23|>=9.0.0,<9.5.4",
+"link": "https://typo3.org/security/advisory/typo3-core-sa-2019-005",
+"severity": "medium"
+},
+{
+"id": "PKSA-d1gc-jvn6-g46m",
+"cve": "CVE-2020-15098",
+"title": "TYPO3-CORE-SA-2020-008: Sensitive Information Disclosure",
+"affected": ">=10.0.0,<10.4.6|>=9.0.0,<9.5.20",
+"link": "https://typo3.org/security/advisory/typo3-core-sa-2020-008",
+"severity": "high"
+},
+{
+"id": "PKSA-d4cy-7k8v-3wtm",
+"cve": "CVE-2022-36105",
+"title": "TYPO3-CORE-SA-2022-007: User Enumeration via Response Timing",
+"affected": ">=10.0.0,<10.4.32|>=11.0.0,<11.5.16",
+"link": "https://typo3.org/security/advisory/typo3-core-sa-2022-007",
+"severity": "medium"
+},
+{
+"id": "PKSA-d551-hdqh-5mmf",
+"cve": "CVE-2024-25119",
+"title": "TYPO3 Install Tool vulnerable to Information Disclosure of Encryption Key",
+"affected": "=13.0.0|>=12.0.0,<=12.4.10|>=11.0.0,<=11.5.34|>=10.0.0,<=10.4.42|>=9.0.0,<=9.5.45|>=8.0.0,<=8.7.56",
+"link": "https://github.com/advisories/GHSA-h47m-3f78-qp9g",
+"severity": "medium"
+},
+{
+"id": "PKSA-dh2h-m334-x2dj",
+"cve": "CVE-2022-31048",
+"title": "TYPO3-CORE-SA-2022-003: Cross-Site Scripting in Form Framework",
+"affected": ">=10.0.0,<10.4.29|>=11.0.0,<11.5.11",
+"link": "https://typo3.org/security/advisory/typo3-core-sa-2022-003",
+"severity": "medium"
+},
+{
+"id": "PKSA-dnvg-71td-yz19",
+"cve": "CVE-2022-31050",
+"title": "TYPO3-CORE-SA-2022-005: Insufficient Session Expiration in Admin Tool",
+"affected": ">=10.0.0,<10.4.29|>=11.0.0,<11.5.11",
+"link": "https://typo3.org/security/advisory/typo3-core-sa-2022-005",
+"severity": "medium"
+},
+{
+"id": "PKSA-f4p7-n9ff-b1y3",
+"cve": "",
+"title": "Authentication Bypass in TYPO3 CMS",
+"affected": ">=8.0.0,<8.7.17|>=9.0.0,<9.3.2",
+"link": "https://typo3.org/security/advisory/typo3-core-sa-2018-001",
+"severity": "medium"
+},
+{
+"id": "PKSA-f5jr-dg29-ng7s",
+"cve": "",
+"title": "Arbitrary Code Execution and Cross-Site Scripting in Backend API",
+"affected": ">=8.0.0,<8.7.27|>=9.0.0,<9.5.8",
+"link": "https://typo3.org/security/advisory/typo3-core-sa-2019-019",
+"severity": "medium"
+},
+{
+"id": "PKSA-fnjs-nj4b-mz65",
+"cve": "",
+"title": "Arbitrary Code Execution via File List Module",
+"affected": ">=8.0.0,<8.7.23|>=9.0.0,<9.5.4",
+"link": "https://typo3.org/security/advisory/typo3-core-sa-2019-008",
+"severity": "critical"
+},
+{
+"id": "PKSA-gbv9-2d3q-gcts",
+"cve": "CVE-2021-32768",
+"title": "TYPO3-CORE-SA-2021-013: Cross-Site Scripting via Rich-Text Content",
+"affected": ">=10.0.0,<10.4.19|>=11.0.0,<11.3.2|>=9.0.0,<9.5.29",
+"link": "https://typo3.org/security/advisory/typo3-core-sa-2021-013",
+"severity": "medium"
+},
+{
+"id": "PKSA-ghx2-mc2z-fx6x",
+"cve": "CVE-2026-47343",
+"title": "TYPO3-CORE-SA-2026-007: Broken Access Control in File Abstraction Layer",
+"affected": "<10.4.57|>=11.0.0,<11.5.51|>=12.0.0,<12.4.46|>=13.0.0,<13.4.31|>=14.0.0,<14.3.3",
+"link": "https://typo3.org/security/advisory/typo3-core-sa-2026-007",
+"severity": "high"
+},
+{
+"id": "PKSA-gj1k-954p-nhmk",
+"cve": "CVE-2026-49738",
+"title": "TYPO3-CORE-SA-2026-016: Broken Access Control in File Abstraction Layer",
+"affected": "<10.4.57|>=11.0.0,<11.5.51|>=12.0.0,<12.4.46|>=13.0.0,<13.4.31|>=14.0.0,<14.3.3",
+"link": "https://typo3.org/security/advisory/typo3-core-sa-2026-016",
+"severity": "low"
+},
+{
+"id": "PKSA-gr4f-6g49-cg8v",
+"cve": "CVE-2026-47352",
+"title": "TYPO3-CORE-SA-2026-015: Broken Access Control in Backend API",
+"affected": "<10.4.57|>=11.0.0,<11.5.51|>=12.0.0,<12.4.46|>=13.0.0,<13.4.31|>=14.0.0,<14.3.3",
+"link": "https://typo3.org/security/advisory/typo3-core-sa-2026-015",
+"severity": "medium"
+},
+{
+"id": "PKSA-gt1g-9dsw-fhqp",
+"cve": "CVE-2019-19850",
+"title": "SQL Injection in low-level Query Generator",
+"affected": ">=10.0.0,<10.2.1|>=8.0.0,<8.7.30|>=9.0.0,<9.5.12",
+"link": "https://typo3.org/security/advisory/typo3-core-sa-2019-025",
+"severity": "medium"
+},
+{
+"id": "PKSA-h3yp-gcbn-7gbt",
+"cve": "CVE-2010-3673",
+"title": "TYPO3 is vulnerable to Information Disclosure in the HTML mailing API",
+"affected": ">=4.4,<4.4.1|>=4.3,<4.3.4|<4.2.13",
+"link": "https://github.com/advisories/GHSA-5f2f-hr23-j59j",
+"severity": "medium"
+},
+{
+"id": "PKSA-h5xk-8nxx-znp4",
+"cve": "CVE-2024-25120",
+"title": "TYPO3 vulnerable to Improper Access Control of Resources Referenced by t3:// URI Scheme",
+"affected": "=13.0.0|>=12.0.0,<=12.4.10|>=11.0.0,<=11.5.34|>=10.0.0,<=10.4.42|>=9.0.0,<=9.5.45|>=8.0.0,<=8.7.56",
+"link": "https://github.com/advisories/GHSA-wf85-8hx9-gj7c",
+"severity": "medium"
+},
+{
+"id": "PKSA-h6n8-zzc6-1djm",
+"cve": "CVE-2021-21358",
+"title": "TYPO3-CORE-SA-2021-004: Cross-Site Scripting in Form Framework",
+"affected": ">=10.0.0,<10.4.14|>=11.0.0,<11.1.1",
+"link": "https://typo3.org/security/advisory/typo3-core-sa-2021-004",
+"severity": "medium"
+},
+{
+"id": "PKSA-hf6f-qcwd-7279",
+"cve": "CVE-2022-23501",
+"title": "TYPO3-CORE-SA-2022-013: Weak Authentication in Frontend Login",
+"affected": ">=10.0.0,<10.4.33|>=11.0.0,<11.5.20|>=12.0.0,<12.1.1",
+"link": "https://typo3.org/security/advisory/typo3-core-sa-2022-013",
+"severity": "medium"
+},
+{
+"id": "PKSA-hqhs-7j5f-td2d",
+"cve": "CVE-2026-49741",
+"title": "TYPO3-CORE-SA-2026-017: Privilege Escalation & SQL Injection in Form Framework",
+"affected": ">=14.0.0,<14.3.3",
+"link": "https://typo3.org/security/advisory/typo3-core-sa-2026-017",
+"severity": "high"
+},
+{
+"id": "PKSA-hrdf-cmfs-zgg7",
+"cve": "CVE-2021-21340",
+"title": "TYPO3-CORE-SA-2021-007: Cross-Site Scripting in Content Preview",
+"affected": ">=10.0.0,<10.4.14|>=11.0.0,<11.1.1",
+"link": "https://typo3.org/security/advisory/typo3-core-sa-2021-007",
+"severity": "medium"
+},
+{
+"id": "PKSA-hwwm-389j-p6f2",
+"cve": "CVE-2013-4320",
+"title": "TYPO3 Improper Access Management in the File Abstraction Layer",
+"affected": ">=6.1,<6.1.4|>=6.0,<6.0.9",
+"link": "https://github.com/advisories/GHSA-p9jg-9w87-6rg4",
+"severity": "medium"
+},
+{
+"id": "PKSA-j3x1-dtrb-kbct",
+"cve": "CVE-2022-23500",
+"title": "TYPO3-CORE-SA-2022-012: Denial of Service in Page Error Handling",
+"affected": ">=10.0.0,<10.4.33|>=11.0.0,<11.5.20",
+"link": "https://typo3.org/security/advisory/typo3-core-sa-2022-012",
+"severity": "medium"
+},
+{
+"id": "PKSA-jbhx-knzt-5y6m",
+"cve": "CVE-2024-25118",
+"title": "TYPO3 Backend Forms vulnerable to Information Disclosure of Hashed Passwords",
+"affected": "=13.0.0|>=12.0.0,<=12.4.10|>=11.0.0,<=11.5.34|>=10.0.0,<=10.4.42|>=9.0.0,<=9.5.45|>=8.0.0,<=8.7.56",
+"link": "https://github.com/advisories/GHSA-38r2-5695-334w",
+"severity": "medium"
+},
+{
+"id": "PKSA-jktp-yswk-rrww",
+"cve": "",
+"title": "Security Misconfiguration for Backend User Accounts",
+"affected": ">=8.0.0,<8.7.23|>=9.0.0,<9.5.4",
+"link": "https://typo3.org/security/advisory/typo3-core-sa-2019-002",
+"severity": "high"
+},
+{
+"id": "PKSA-jndc-1hrg-s597",
+"cve": "",
+"title": "Privilege Escalation & SQL Injection in TYPO3 CMS",
+"affected": ">=8.5.0,<8.7.17|>=9.0.0,<9.3.2",
+"link": "https://typo3.org/security/advisory/typo3-core-sa-2018-003",
+"severity": "medium"
+},
+{
+"id": "PKSA-jp7z-h3vv-yr4s",
+"cve": "CVE-2023-47127",
+"title": "TYPO3-CORE-SA-2023-006: Weak Authentication in Session Handling",
+"affected": ">=8.0.0,<8.7.55|>=9.0.0,<9.5.44|>=10.0.0,<10.4.41|>=11.0.0,<11.5.33|>=12.0.0,<12.4.8",
+"link": "https://typo3.org/security/advisory/typo3-core-sa-2023-006",
+"severity": "medium"
+},
+{
+"id": "PKSA-jydd-ptqz-cc3y",
+"cve": "CVE-2019-19848",
+"title": "Directory Traversal on ZIP extraction",
+"affected": ">=10.0.0,<10.2.1|>=8.0.0,<8.7.30|>=9.0.0,<9.5.12",
+"link": "https://typo3.org/security/advisory/typo3-core-sa-2019-024",
+"severity": "medium"
+},
+{
+"id": "PKSA-k1cr-xs53-x3zz",
+"cve": "CVE-2020-11064",
+"title": "TYPO3-CORE-SA-2020-002: Cross-Site Scripting in Form Engine",
+"affected": ">=10.0.0,<10.4.2|>=9.0.0,<9.5.17",
+"link": "https://typo3.org/security/advisory/typo3-core-sa-2020-002",
+"severity": "medium"
+},
+{
+"id": "PKSA-k7qq-jvk9-4s56",
+"cve": "CVE-2021-21339",
+"title": "TYPO3-CORE-SA-2021-006: Cleartext storage of session identifier",
+"affected": ">=10.0.0,<10.4.14|>=11.0.0,<11.1.1|>=9.0.0,<9.5.25",
+"link": "https://typo3.org/security/advisory/typo3-core-sa-2021-006",
+"severity": "medium"
+},
+{
+"id": "PKSA-kgft-67y3-84tv",
+"cve": "",
+"title": "Cross-Site Scripting in Filelist Module",
+"affected": ">=10.0.0,<10.2.1|>=8.0.0,<8.7.30|>=9.0.0,<9.5.12",
+"link": "https://typo3.org/security/advisory/typo3-core-sa-2019-023",
+"severity": "high"
+},
+{
+"id": "PKSA-kpzq-776n-w7hy",
+"cve": "CVE-2008-2717",
+"title": "TYPO3 Unrestricted File Upload vulnerability",
+"affected": ">=4.2.0,<4.2.1|>=4.1.0,<4.1.7|>=4.0.0,<4.0.9",
+"link": "https://github.com/advisories/GHSA-f35p-hcwf-9f9f",
+"severity": "medium"
+},
+{
+"id": "PKSA-kwrd-d779-ytq1",
+"cve": "CVE-2013-7080",
+"title": "TYPO3 is vulnerable to Mass Assignment in the Extension table administration library",
+"affected": ">=6.0.0,<6.0.11|>=4.6.0,<4.7.16|>=4.5.0,<4.5.31",
+"link": "https://github.com/advisories/GHSA-5fj8-wh3g-qvq2",
+"severity": "medium"
+},
+{
+"id": "PKSA-kzft-dxcq-xwfm",
+"cve": "CVE-2020-15099",
+"title": "TYPO3-CORE-SA-2020-007: Potential Privilege Escalation",
+"affected": ">=10.0.0,<10.4.6|>=9.0.0,<9.5.20",
+"link": "https://typo3.org/security/advisory/typo3-core-sa-2020-007",
+"severity": "high"
+},
+{
+"id": "PKSA-mcdh-s731-c8c7",
+"cve": "CVE-2013-7078",
+"title": "TYPO3 Cross-site scripting (XSS) vulnerability in the Extbase Framework",
+"affected": ">=6.0.0,<6.0.11|>=6.1.0,<6.1.6|>=4.7.0,<4.7.16|>=4.5.0,<4.5.31",
+"link": "https://github.com/advisories/GHSA-qj69-chjp-g4f5",
+"severity": "low"
+},
+{
+"id": "PKSA-mzh3-fprn-psqp",
+"cve": "CVE-2020-11063",
+"title": "TYPO3-CORE-SA-2020-001: Information Disclosure in Password Reset",
+"affected": ">=10.0.0,<10.4.2",
+"link": "https://typo3.org/security/advisory/typo3-core-sa-2020-001",
+"severity": "low"
+},
+{
+"id": "PKSA-ngtt-95zk-116b",
+"cve": "",
+"title": "Possible Insecure Deserialization in Extbase Request Handling",
+"affected": ">=8.0.0,<8.7.30|>=9.0.0,<9.5.12",
+"link": "https://typo3.org/security/advisory/typo3-psa-2019-011",
+"severity": "high"
+},
+{
+"id": "PKSA-ns26-fz7n-2jm8",
+"cve": "CVE-2025-59016",
+"title": "TYPO3 CMS exposes sensitive information in an error message",
+"affected": ">=13.0.0,<13.4.18|>=12.0.0,<12.4.37|>=11.0.0,<11.5.48|>=10.0.0,<10.4.54|>=9.0.0,<9.5.55",
+"link": "https://github.com/advisories/GHSA-cvm2-5f78-g9m8",
+"severity": "medium"
+},
+{
+"id": "PKSA-nx6h-6z7h-64pg",
+"cve": "",
+"title": "Insecure Deserialization in TYPO3 CMS",
+"affected": ">=8.5.0,<8.7.17|>=9.0.0,<9.3.2",
+"link": "https://typo3.org/security/advisory/typo3-core-sa-2018-004",
+"severity": "high"
+},
+{
+"id": "PKSA-nxc9-3rpx-fj8p",
+"cve": "CVE-2021-21355",
+"title": "TYPO3-CORE-SA-2021-002: Unrestricted File Upload in Form Framework",
+"affected": ">=10.0.0,<10.4.14|>=11.0.0,<11.1.1|>=9.0.0,<9.5.25",
+"link": "https://typo3.org/security/advisory/typo3-core-sa-2021-002",
+"severity": "high"
+},
+{
+"id": "PKSA-p25q-9h89-q9b8",
+"cve": "CVE-2022-36104",
+"title": "TYPO3-CORE-SA-2022-006: Denial of Service in Page Error Handling",
+"affected": ">=11.0.0,<11.5.16",
+"link": "https://typo3.org/security/advisory/typo3-core-sa-2022-006",
+"severity": "medium"
+},
+{
+"id": "PKSA-pdn3-qb24-bkw6",
+"cve": "CVE-2022-23504",
+"title": "TYPO3-CORE-SA-2022-016: Sensitive Information Disclosure via YAML Placeholder Expressions in Site Configuration",
+"affected": ">=10.0.0,<10.4.33|>=11.0.0,<11.5.20|>=12.0.0,<12.1.1",
+"link": "https://typo3.org/security/advisory/typo3-core-sa-2022-016",
+"severity": "medium"
+},
+{
+"id": "PKSA-pg93-52nb-x8ym",
+"cve": "CVE-2026-47348",
+"title": "TYPO3-CORE-SA-2026-010: Cross-Site Scripting in Indexed Search",
+"affected": ">=13.0.0,<13.4.31|>=14.0.0,<14.3.3",
+"link": "https://typo3.org/security/advisory/typo3-core-sa-2026-010",
+"severity": "medium"
+},
+{
+"id": "PKSA-prgj-sgzn-q6cs",
+"cve": "CVE-2024-22188",
+"title": "TYPO3 Install Tool vulnerable to Code Execution",
+"affected": "=13.0.0|>=12.0.0,<=12.4.10|>=11.0.0,<=11.5.34|>=10.0.0,<=10.4.42|>=9.0.0,<=9.5.45|>=8.0.0,<=8.7.56",
+"link": "https://github.com/advisories/GHSA-5w2h-59j3-8x5w",
+"severity": "high"
+},
+{
+"id": "PKSA-ptbd-5fbp-bm32",
+"cve": "CVE-2021-41114",
+"title": "TYPO3-CORE-SA-2021-015: HTTP Host Header Injection in Request Handling",
+"affected": ">=11.0.0,<11.5.0",
+"link": "https://typo3.org/security/advisory/typo3-core-sa-2021-015",
+"severity": "medium"
+},
+{
+"id": "PKSA-pz1k-khnw-3j7j",
+"cve": "CVE-2025-59013",
+"title": "TYPO3 CMS has an open\u2011redirect vulnerability",
+"affected": ">=13.0.0,<13.4.18|>=12.0.0,<12.4.37|>=11.0.0,<11.5.48|>=10.0.0,<10.4.54|>=9.0.0,<9.5.55",
+"link": "https://github.com/advisories/GHSA-72jf-5fg5-3cw3",
+"severity": "medium"
+},
+{
+"id": "PKSA-q3vc-jr63-rrrj",
+"cve": "CVE-2026-49740",
+"title": "TYPO3-CORE-SA-2026-018: Insecure Deserialization in Core API",
+"affected": "<10.4.57|>=11.0.0,<11.5.51|>=12.0.0,<12.4.46|>=13.0.0,<13.4.31|>=14.0.0,<14.3.3",
+"link": "https://typo3.org/security/advisory/typo3-core-sa-2026-018",
+"severity": "medium"
+},
+{
+"id": "PKSA-q3vc-nbpk-d1gk",
+"cve": "CVE-2025-47939",
+"title": "TYPO3 Allows Unrestricted File Upload in File Abstraction Layer",
+"affected": ">=13.0.0,<=13.4.11|>=12.0.0,<=12.4.30|>=11.0.0,<=11.5.43|>=10.0.0,<=10.4.49|>=9.0.0,<=9.5.50",
+"link": "https://github.com/advisories/GHSA-9hq9-cr36-4wpj",
+"severity": "medium"
+},
+{
+"id": "PKSA-q5ym-2n81-pfr3",
+"cve": "",
+"title": "Denial of Service in Frontend Record Registration",
+"affected": ">=8.0.0,<8.7.21",
+"link": "https://typo3.org/security/advisory/typo3-core-sa-2018-012",
+"severity": "medium"
+},
+{
+"id": "PKSA-qbn4-sj3q-rvvx",
+"cve": "CVE-2022-23499",
+"title": "TYPO3-CORE-SA-2022-017: By-passing Cross-Site Scripting Protection in HTML Sanitizer",
+"affected": ">=10.0.0,<10.4.33|>=11.0.0,<11.5.20|>=12.0.0,<12.1.1",
+"link": "https://typo3.org/security/advisory/typo3-core-sa-2022-017",
+"severity": ""
+},
+{
+"id": "PKSA-qszd-7zv5-3hkx",
+"cve": "",
+"title": "Cross-Site Scripting in Online Media Asset Rendering",
+"affected": ">=8.0.0,<8.7.21|>=9.0.0,<9.5.2",
+"link": "https://typo3.org/security/advisory/typo3-core-sa-2018-006",
+"severity": "medium"
+},
+{
+"id": "PKSA-rfsn-q422-vhgz",
+"cve": "",
+"title": "Broken Access Control in Import Module",
+"affected": ">=9.0.0,<9.5.8",
+"link": "https://typo3.org/security/advisory/typo3-core-sa-2019-017",
+"severity": "medium"
+},
+{
+"id": "PKSA-rmrp-g3x4-sq5j",
+"cve": "CVE-2021-32767",
+"title": "TYPO3-CORE-SA-2021-012: Information Disclosure in User Authentication",
+"affected": ">=10.0.0,<10.4.18|>=11.0.0,<11.3.1|>=9.0.0,<9.5.28",
+"link": "https://typo3.org/security/advisory/typo3-core-sa-2021-012",
+"severity": "medium"
+},
+{
+"id": "PKSA-rtck-8z1q-gn5s",
+"cve": "CVE-2026-0859",
+"title": "TYPO3 CMS Allows Insecure Deserialization via Mailer File Spool",
+"affected": ">=10.0.0,<=10.4.54|>=11.0.0,<=11.5.48|>=12.0.0,<=12.4.40|>=13.0.0,<=13.4.22|>=14.0.0,<=14.0.1",
+"link": "https://github.com/advisories/GHSA-7vp9-x248-9vr9",
+"severity": "medium"
+},
+{
+"id": "PKSA-rvt7-wnc1-w2gd",
+"cve": "",
+"title": "Denial of Service in Online Media Asset Handling",
+"affected": ">=8.0.0,<8.7.21|>=9.0.0,<9.5.2",
+"link": "https://typo3.org/security/advisory/typo3-core-sa-2018-011",
+"severity": "medium"
+},
+{
+"id": "PKSA-rwrz-v1bh-34yt",
+"cve": "CVE-2022-36020",
+"title": "TYPO3-CORE-SA-2022-011: By-passing Cross-Site Scripting Protection in HTML Sanitizer",
+"affected": ">=10.0.0,<10.4.32|>=11.0.0,<11.5.16",
+"link": "https://typo3.org/security/advisory/typo3-core-sa-2022-011",
+"severity": "medium"
+},
+{
+"id": "PKSA-rwv7-ff55-f18g",
+"cve": "CVE-2025-59015",
+"title": "TYPO3 CMS uses insufficient entropy when generating passwords",
+"affected": ">=13.0.0,<13.4.18|>=12.0.0,<12.4.37",
+"link": "https://github.com/advisories/GHSA-p5jq-5383-qvc7",
+"severity": "medium"
+},
+{
+"id": "PKSA-s3vj-chpj-8wrn",
+"cve": "CVE-2026-47347",
+"title": "TYPO3-CORE-SA-2026-009: Open Redirect in TYPO3 CMS",
+"affected": "<10.4.57|>=11.0.0,<11.5.51|>=12.0.0,<12.4.46|>=13.0.0,<13.4.31|>=14.0.0,<14.3.3",
+"link": "https://typo3.org/security/advisory/typo3-core-sa-2026-009",
+"severity": "medium"
+},
+{
+"id": "PKSA-s5jg-xrdb-kcbj",
+"cve": "CVE-2019-12747",
+"title": "Insecure Deserialization in TYPO3 CMS",
+"affected": ">=8.0.0,<8.7.27|>=9.0.0,<9.5.8",
+"link": "https://typo3.org/security/advisory/typo3-core-sa-2019-020",
+"severity": "high"
+},
+{
+"id": "PKSA-sntp-fryn-mxq8",
+"cve": "",
+"title": "Information Disclosure in Install Tool",
+"affected": ">=8.0.0,<8.7.21|>=9.0.0,<9.5.2",
+"link": "https://typo3.org/security/advisory/typo3-core-sa-2018-010",
+"severity": "medium"
+},
+{
+"id": "PKSA-sy4v-bxfk-mjjn",
+"cve": "CVE-2022-31047",
+"title": "TYPO3-CORE-SA-2022-002: Information Disclosure via Exception Handling/Logger",
+"affected": ">=10.0.0,<10.4.29|>=11.0.0,<11.5.11",
+"link": "https://typo3.org/security/advisory/typo3-core-sa-2022-002",
+"severity": "medium"
+},
+{
+"id": "PKSA-sy5h-2rr8-prnp",
+"cve": "CVE-2020-11066",
+"title": "TYPO3-CORE-SA-2020-004: Class destructors causing side-effects when being unserialized",
+"affected": ">=10.0.0,<10.4.2|>=9.0.0,<9.5.17",
+"link": "https://typo3.org/security/advisory/typo3-core-sa-2020-004",
+"severity": "high"
+},
+{
+"id": "PKSA-t2bp-d8b3-sc74",
+"cve": "",
+"title": "Information Disclosure of Installed Extensions",
+"affected": ">=8.0.0,<8.7.23|>=9.0.0,<9.5.4",
+"link": "https://typo3.org/security/advisory/typo3-core-sa-2019-001",
+"severity": "medium"
+},
+{
+"id": "PKSA-t9b1-2gtq-zpcq",
+"cve": "CVE-2019-10912",
+"title": "Possible deserialization side-effects in symfony/cache",
+"affected": ">=9.0.0,<9.5.8",
+"link": "https://typo3.org/security/advisory/typo3-core-sa-2019-016",
+"severity": "high"
+},
+{
+"id": "PKSA-tdw8-rcwc-259v",
+"cve": "",
+"title": "Security Misconfiguration in Frontend Session Handling",
+"affected": ">=8.0.0,<8.7.27|>=9.0.0,<9.5.8",
+"link": "https://typo3.org/security/advisory/typo3-core-sa-2019-018",
+"severity": "high"
+},
+{
+"id": "PKSA-tm11-834c-1wbq",
+"cve": "CVE-2024-34358",
+"title": "TYPO3 vulnerable to an Uncontrolled Resource Consumption in the ShowImageController",
+"affected": ">=13.0.0,<=13.1.0|>=12.0.0,<=12.4.14|>=11.0.0,<=11.5.36|>=10.0.0,<=10.4.44|>=9.0.0,<=9.5.47",
+"link": "https://github.com/advisories/GHSA-36g8-62qv-5957",
+"severity": "medium"
+},
+{
+"id": "PKSA-tpdb-shwd-489h",
+"cve": "CVE-2021-32667",
+"title": "TYPO3-CORE-SA-2021-009: Cross-Site Scripting in Page Preview",
+"affected": ">=10.0.0,<10.4.18|>=11.0.0,<11.3.1|>=9.0.0,<9.5.28",
+"link": "https://typo3.org/security/advisory/typo3-core-sa-2021-009",
+"severity": "medium"
+},
+{
+"id": "PKSA-ttpr-h5zy-14x1",
+"cve": "CVE-2020-11069",
+"title": "TYPO3-CORE-SA-2020-006: Same-Site Request Forgery to Backend User Interface",
+"affected": ">=10.0.0,<10.4.2|>=9.0.0,<9.5.17",
+"link": "https://typo3.org/security/advisory/typo3-core-sa-2020-006",
+"severity": "high"
+},
+{
+"id": "PKSA-txkp-tzqy-rz72",
+"cve": "CVE-2021-32668",
+"title": "TYPO3-CORE-SA-2021-010: Cross-Site Scripting in Query Generator & Query View",
+"affected": ">=10.0.0,<10.4.18|>=11.0.0,<11.3.1|>=9.0.0,<9.5.28",
+"link": "https://typo3.org/security/advisory/typo3-core-sa-2021-010",
+"severity": "medium"
+},
+{
+"id": "PKSA-v1kb-vbr1-8fy1",
+"cve": "CVE-2022-36106",
+"title": "TYPO3-CORE-SA-2022-008: Missing check for expiration time of password reset token for backend users",
+"affected": ">=10.0.0,<10.4.32|>=11.0.0,<11.5.16",
+"link": "https://typo3.org/security/advisory/typo3-core-sa-2022-008",
+"severity": "medium"
+},
+{
+"id": "PKSA-v9y4-y7z6-sjjg",
+"cve": "CVE-2019-12748",
+"title": "Cross-Site Scripting in Link Handling",
+"affected": ">=8.0.0,<8.7.27|>=9.0.0,<9.5.8",
+"link": "https://typo3.org/security/advisory/typo3-core-sa-2019-015",
+"severity": "medium"
+},
+{
+"id": "PKSA-vbrn-fwpj-xmx5",
+"cve": "CVE-2026-49742",
+"title": "TYPO3-CORE-SA-2026-013: Broken Access Control in Media Module",
+"affected": ">=11.0.0,<11.5.51|>=12.0.0,<12.4.46|>=13.0.0,<13.4.31|>=14.0.0,<14.3.3",
+"link": "https://typo3.org/security/advisory/typo3-core-sa-2026-013",
+"severity": "high"
+},
+{
+"id": "PKSA-vv7s-w171-wb2j",
+"cve": "CVE-2026-47350",
+"title": "TYPO3-CORE-SA-2026-012: Broken Access Control in DataHandler",
+"affected": ">=13.0.0,<13.4.31|>=14.0.0,<14.3.3",
+"link": "https://typo3.org/security/advisory/typo3-core-sa-2026-012",
+"severity": "medium"
+},
+{
+"id": "PKSA-vxw7-bfmg-pz5q",
+"cve": "CVE-2023-24814",
+"title": "TYPO3-CORE-SA-2023-001: Persisted Cross-Site Scripting in Frontend Rendering",
+"affected": ">=10.0.0,<10.4.35|>=11.0.0,<11.5.23|>=12.0.0,<12.2.0",
+"link": "https://typo3.org/security/advisory/typo3-core-sa-2023-001",
+"severity": "high"
+},
+{
+"id": "PKSA-wjjh-fbmt-t55w",
+"cve": "CVE-2022-36108",
+"title": "TYPO3-CORE-SA-2022-010: Cross-Site Scripting in <f:asset.css> view helper",
+"affected": ">=10.0.0,<10.4.32|>=11.0.0,<11.5.16",
+"link": "https://typo3.org/security/advisory/typo3-core-sa-2022-010",
+"severity": "medium"
+},
+{
+"id": "PKSA-wkgp-n44t-r1jh",
+"cve": "CVE-2022-36107",
+"title": "TYPO3-CORE-SA-2022-009: Stored Cross-Site Scripting via FileDumpController",
+"affected": ">=10.0.0,<10.4.32|>=11.0.0,<11.5.16",
+"link": "https://typo3.org/security/advisory/typo3-core-sa-2022-009",
+"severity": "medium"
+},
+{
+"id": "PKSA-wqbp-c8pr-qp5w",
+"cve": "CVE-2021-21370",
+"title": "TYPO3-CORE-SA-2021-008: Cross-Site Scripting in Content Preview",
+"affected": ">=10.0.0,<10.4.14|>=11.0.0,<11.1.1|>=9.0.0,<9.5.25",
+"link": "https://typo3.org/security/advisory/typo3-core-sa-2021-008",
+"severity": "medium"
+},
+{
+"id": "PKSA-xg1n-zvqv-pswm",
+"cve": "CVE-2021-21357",
+"title": "TYPO3-CORE-SA-2021-003: Broken Access Control in Form Framework",
+"affected": ">=10.0.0,<10.4.14|>=11.0.0,<11.1.1|>=9.0.0,<9.5.25",
+"link": "https://typo3.org/security/advisory/typo3-core-sa-2021-003",
+"severity": "high"
+},
+{
+"id": "PKSA-xxc6-f4fc-bhvm",
+"cve": "",
+"title": "Information Disclosure in Backend User Interface",
+"affected": ">=8.0.0,<8.7.27|>=9.0.0,<9.5.8",
+"link": "https://typo3.org/security/advisory/typo3-core-sa-2019-014",
+"severity": "high"
+},
+{
+"id": "PKSA-xy95-nkpr-w5rm",
+"cve": "",
+"title": "Broken Access Control in Localization Handling",
+"affected": ">=8.0.0,<8.7.23",
+"link": "https://typo3.org/security/advisory/typo3-core-sa-2019-003",
+"severity": "medium"
+},
+{
+"id": "PKSA-yj7d-v8zz-m6nq",
+"cve": "",
+"title": "TYPO3 Cross-Site Scripting in Form Framework validation handling",
+"affected": ">=9.0.0,<9.5.12|>=8.0.0,<8.7.30|>=10.0.0,<10.2.1",
+"link": "https://github.com/advisories/GHSA-95qm-3xp7-vfj5",
+"severity": "medium"
+},
+{
+"id": "PKSA-yzt1-7625-ng3j",
+"cve": "",
+"title": "Cross-Site Scripting in Backend Modal Component",
+"affected": ">=8.0.0,<8.7.21|>=9.0.0,<9.5.2",
+"link": "https://typo3.org/security/advisory/typo3-core-sa-2018-007",
+"severity": "high"
+},
+{
+"id": "PKSA-zhxh-zqgh-5btz",
+"cve": "CVE-2019-11832",
+"title": "Possible Arbitrary Code Execution in Image Processing",
+"affected": ">=8.0.0,<8.7.25|>=9.0.0,<9.5.6",
+"link": "https://typo3.org/security/advisory/typo3-core-sa-2019-012",
+"severity": "high"
+},
+{
+"id": "PKSA-zmbz-zt2r-qk52",
+"cve": "",
+"title": "Cross-Site Scripting in Language Pack Handling",
+"affected": ">=9.0.0,<9.5.4",
+"link": "https://typo3.org/security/advisory/typo3-core-sa-2019-004",
+"severity": "high"
+},
+{
+"id": "PKSA-zz7z-6zsy-d2hc",
+"cve": "CVE-2023-30451",
+"title": "Path Traversal in TYPO3 File Abstraction Layer Storages",
+"affected": "=13.0.0|>=12.0.0,<=12.4.10|>=11.0.0,<=11.5.34|>=10.0.0,<=10.4.42|>=9.0.0,<=9.5.45|>=8.0.0,<=8.7.56",
+"link": "https://github.com/advisories/GHSA-w6x2-jg8h-p6mp",
+"severity": "medium"
+}
+]
+}

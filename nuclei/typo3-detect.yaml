@@ -1,0 +1,97 @@
+id: typo3-detect
+
+info:
+  name: TYPO3 CMS Detection
+  author: vozec
+  severity: info
+  description: |
+    Pre-auth detection of the TYPO3 CMS via multiple independent signals:
+    the default favicon MurmurHash3 (mmh3), frontend/backend body keywords
+    ("powered by TYPO3", generator meta tag), the TYPO3 session cookie
+    (fe_typo_user), Composer-mode asset paths (/_assets/<md5>/) and legacy
+    asset paths (typo3conf/, typo3temp/), plus TYPO3-specific pre-auth
+    endpoints (/typo3/ backend login, /typo3/install.php). Any one match is
+    sufficient. All requests are unauthenticated.
+  reference:
+    - https://typo3.org/
+    - https://docs.typo3.org/
+  classification:
+    cpe: cpe:2.3:a:typo3:typo3:*:*:*:*:*:*:*:*
+  metadata:
+    max-request: 4
+    verified: true
+    vendor: typo3
+    product: typo3
+    shodan-query: http.favicon.hash:-1655488378
+    fofa-query: icon_hash="-1655488378"
+  tags: tech,typo3,cms,detect,favicon
+
+http:
+  - method: GET
+    stop-at-first-match: true
+    host-redirects: true
+    max-redirects: 2
+    path:
+      - "{{BaseURL}}/"
+      - "{{BaseURL}}/typo3/"
+      - "{{BaseURL}}/favicon.ico"
+      - "{{BaseURL}}/typo3/install.php"
+
+    matchers-condition: or
+    matchers:
+      # 1) Frontend header comment / generic marker (rendered on FE pages).
+      - type: word
+        name: powered-by-typo3
+        part: body
+        words:
+          - "This website is powered by TYPO3"
+          - "powered by TYPO3"
+        condition: or
+
+      # 2) PageRenderer generator meta tag.
+      - type: regex
+        name: generator-meta
+        part: body
+        regex:
+          - '(?i)<meta[^>]+name=["\x27]generator["\x27][^>]+content=["\x27][^"\x27]*TYPO3\s*CMS'
+
+      # 3) Default error page marker.
+      - type: word
+        name: typo3-cms-marker
+        part: body
+        words:
+          - "TYPO3 CMS"
+
+      # 4) TYPO3 session / backend cookies.
+      - type: regex
+        name: typo3-cookie
+        part: header
+        regex:
+          - '(?i)Set-Cookie:\s*(fe_typo_user|be_typo_user|Typo3InstallTool)='
+
+      # 5) Asset-path leakage — Composer mode (/_assets/<md5>/) or legacy.
+      - type: regex
+        name: asset-paths
+        part: body
+        regex:
+          - '/_assets/[0-9a-f]{32}/'
+          - '(?:href|src)=["\x27][^"\x27]*(?:typo3conf/|typo3temp/|typo3/sysext/)'
+        condition: or
+
+      # 6) Default favicon MurmurHash3 (Shodan/FOFA-style). Matches the stock
+      #    TYPO3 backend/install favicon (identical across 8.x–14.x).
+      - type: dsl
+        name: favicon-mmh3
+        dsl:
+          - 'status_code == 200 && mmh3(base64_py(body)) == "-1655488378"'
+
+    # Best-effort version leak from exposed core metadata (informational only).
+    extractors:
+      - type: regex
+        name: version
+        part: body
+        internal: false
+        group: 1
+        regex:
+          - "'version'\\s*=>\\s*'([0-9]+\\.[0-9]+\\.[0-9]+)'"
+          - '(?i)TYPO3\s*CMS\s*([0-9]+\.[0-9]+\.[0-9]+)'

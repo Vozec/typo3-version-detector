@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/url"
+	"os"
 	"regexp"
 	"sort"
 	"strings"
@@ -155,9 +156,26 @@ func (f *Fingerprinter) Detect(ctx context.Context, rawURL string) (*VersionResu
 			}
 		}
 	}
-	for _, fp := range f.hashDiscoveredAssets(ctx, base, assets, res, cal) {
+	discovered := f.hashDiscoveredAssets(ctx, base, assets, res, cal)
+	for _, fp := range discovered {
 		if fp.Matched {
 			narrow(fp.Versions)
+		}
+	}
+	// Active composer probing: once a package's /_assets/<md5>/ prefix is known
+	// (from a matched harvested asset), construct and probe EVERY discriminating
+	// file that package ships — including ones the HTML never links — to split a
+	// band the linked assets can't (e.g. color-picker.js / event-handler.js
+	// changing mid-patch-range). This is the main composer-mode precision lever.
+	if res.Mode == ModeComposer && interSet {
+		var current []string
+		for v := range inter {
+			current = append(current, v)
+		}
+		for _, fp := range f.activeComposerProbe(ctx, base, discovered, current, res) {
+			if fp.Matched {
+				narrow(fp.Versions)
+			}
 		}
 	}
 
@@ -499,6 +517,138 @@ func (f *Fingerprinter) hashLegacyProbes(ctx context.Context, base string, res *
 		}
 	}
 	return out
+}
+
+var reAssetsPrefix = regexp.MustCompile(`^(.*/_assets/[0-9a-f]{32}/)(.+)$`)
+
+// activeComposerProbe maps each /_assets/<md5>/ prefix that produced a match to
+// its sysext, then probes ALL of that sysext's discriminating files under the
+// prefix (path-exact matches) — catching discriminators the HTML never links.
+func (f *Fingerprinter) activeComposerProbe(ctx context.Context, base string, discovered []FileProbe, current []string, res *VersionResult) []FileProbe {
+	if f.DB.Empty() || len(current) < 2 {
+		return nil // already pinned, nothing to split
+	}
+	band := toSet(current)
+	// Map each /_assets/<md5>/ prefix to its sysext (typo3/sysext/backend/) — using
+	// the matched asset's CONTENT md5 to disambiguate a sub-path that several
+	// sysexts share (e.g. a JS filename present in both backend and t3skin).
+	prefixSysext := map[string]string{}
+	for _, fp := range discovered {
+		if !fp.Matched || fp.MD5 == "" {
+			continue
+		}
+		m := reAssetsPrefix.FindStringSubmatch(fp.Path)
+		if m == nil {
+			continue
+		}
+		pfx, sub := m[1], m[2]
+		if _, ok := prefixSysext[pfx]; ok {
+			continue
+		}
+		if sysext := f.dbSysextForAsset(sub, fp.MD5); sysext != "" {
+			prefixSysext[pfx] = sysext
+		}
+	}
+	if len(prefixSysext) == 0 {
+		return nil
+	}
+
+	// Build the probe list: ONLY files that actually split the current candidate
+	// band, ranked by how finely they split it (most distinct hashes within the
+	// band first). This targets the exact discriminators — e.g. color-picker.js
+	// splitting 13.4.27 from 13.4.28+ — instead of high-churn-overall files.
+	type probe struct {
+		url, dbpath string
+		score       int
+	}
+	var probes []probe
+	seen := map[string]bool{}
+	for pfx, sysext := range prefixSysext {
+		for _, dbpath := range f.DB.DiscriminatingUnderRanked(sysext) {
+			sub := afterResourcesPublic(dbpath)
+			if sub == "" {
+				continue
+			}
+			score := f.DB.splitPower(dbpath, band)
+			if score < 2 {
+				continue // doesn't split the band
+			}
+			u := base + pfx + sub
+			if seen[u] {
+				continue
+			}
+			seen[u] = true
+			probes = append(probes, probe{u, dbpath, score})
+		}
+	}
+	if os.Getenv("T3DEBUG") != "" {
+		fmt.Fprintf(os.Stderr, "[dbg] prefixSysext=%v probes=%d\n", prefixSysext, len(probes))
+	}
+	sort.Slice(probes, func(i, j int) bool { return probes[i].score > probes[j].score })
+	const cap = 24
+	if len(probes) > cap {
+		probes = probes[:cap]
+	}
+
+	out := make([]FileProbe, len(probes))
+	var wg sync.WaitGroup
+	sem := make(chan struct{}, f.conc())
+	for i, p := range probes {
+		wg.Add(1)
+		sem <- struct{}{}
+		go func(i int, p probe) {
+			defer wg.Done()
+			defer func() { <-sem }()
+			fp := FileProbe{Path: compactAssetPath(p.url)}
+			r, err := f.getProbe(ctx, p.url)
+			if err == nil && r != nil && r.Status == 200 && len(r.Body) > 0 && r.isAsset() {
+				sum := md5.Sum(r.Body)
+				fp.MD5 = hex.EncodeToString(sum[:])
+				fp.Status = 200
+				if vs := f.DB.VersionsForHash(p.dbpath, fp.MD5); len(vs) > 0 {
+					fp.Matched, fp.Versions, fp.ByPath = true, vs, true
+				}
+			}
+			out[i] = fp
+		}(i, p)
+	}
+	wg.Wait()
+	for _, fp := range out {
+		if fp.Matched {
+			res.Files = append(res.Files, fp)
+		}
+	}
+	return out
+}
+
+// dbSysextForAsset finds the sysext whose "Resources/Public/<sub>" file has the
+// given content md5 — uniquely identifying the package behind an /_assets/<md5>/
+// prefix even when several sysexts ship a file with the same sub-path.
+func (f *Fingerprinter) dbSysextForAsset(sub, md5hex string) string {
+	if f.subIndex == nil {
+		f.subIndex = map[string]string{} // sub -> "p1|p2|..." (all full DB paths)
+		for p := range f.DB.Files {
+			if i := strings.Index(p, "Resources/Public/"); i >= 0 {
+				key := p[i+len("Resources/Public/"):]
+				if f.subIndex[key] == "" {
+					f.subIndex[key] = p
+				} else {
+					f.subIndex[key] += "|" + p
+				}
+			}
+		}
+	}
+	for _, p := range strings.Split(f.subIndex[sub], "|") {
+		if p == "" {
+			continue
+		}
+		if len(f.DB.VersionsForHash(p, md5hex)) > 0 {
+			if i := strings.Index(p, "Resources/Public/"); i >= 0 {
+				return p[:i]
+			}
+		}
+	}
+	return ""
 }
 
 // hashDiscoveredAssets hashes each harvested asset URL and matches by content

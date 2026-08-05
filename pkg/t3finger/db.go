@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"sort"
+	"strings"
 )
 
 //go:embed db.json
@@ -169,6 +170,39 @@ func (d *DB) DiscriminatingPathsRanked() []string {
 		out[i] = x.p
 	}
 	return out
+}
+
+// DiscriminatingUnderRanked returns the discriminating paths that start with
+// prefix (a sysext path like "typo3/sysext/backend/"), ranked by how much each
+// narrows the version — for active probing of one package's files.
+func (d *DB) DiscriminatingUnderRanked(prefix string) []string {
+	var out []string
+	for _, p := range d.DiscriminatingPathsRanked() {
+		if strings.HasPrefix(p, prefix) {
+			out = append(out, p)
+		}
+	}
+	return out
+}
+
+// splitPower returns how many distinct content hashes servedPath has among the
+// given versions — i.e. how finely probing it would split that candidate band.
+// 1 = every version shares the same bytes (useless); ≥2 = it discriminates.
+func (d *DB) splitPower(servedPath string, band map[string]bool) int {
+	m := d.Files[servedPath]
+	if m == nil {
+		return 0
+	}
+	hashes := map[string]bool{}
+	for h, vs := range m {
+		for _, v := range vs {
+			if band[v] {
+				hashes[h] = true
+				break
+			}
+		}
+	}
+	return len(hashes)
 }
 
 // AllPaths returns every served path known to the DB, sorted.

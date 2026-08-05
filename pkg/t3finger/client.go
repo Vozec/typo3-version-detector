@@ -42,9 +42,10 @@ type Fingerprinter struct {
 	// probeHTTP is like HTTP but does not follow redirects (for asset probes).
 	probeHTTP *http.Client
 
-	dbBase  map[string]bool // cached DB path basenames
-	limiter *rateLimiter
-	limOnce sync.Once
+	dbBase   map[string]bool   // cached DB path basenames
+	subIndex map[string]string // cached Resources/Public sub-path -> sysext prefix
+	limiter  *rateLimiter
+	limOnce  sync.Once
 }
 
 // Option configures a Fingerprinter.

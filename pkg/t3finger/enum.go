@@ -174,7 +174,7 @@ func (f *Fingerprinter) EnumerateExtensions(ctx context.Context, target string, 
 	sort.Slice(hits, func(i, j int) bool { return hits[i].pkg < hits[j].pkg })
 	for _, h := range hits {
 		assetURL := AssetURL(base, h.pkg)
-		ext := Extension{Package: h.pkg, AssetURL: assetURL, Status: h.status}
+		ext := Extension{Package: h.pkg, AssetURL: assetURL, Status: h.status, ComposerName: h.pkg}
 		for _, sub := range confirmPaths {
 			st, sz, ok := f.head(ctx, assetURL+sub)
 			if ok && (st != cs || sz != csz) {
@@ -183,7 +183,79 @@ func (f *Fingerprinter) EnumerateExtensions(ctx context.Context, target string, 
 				break
 			}
 		}
+		// Version by static-file hash: the extension's public assets live under
+		// the same /_assets/<md5>/ prefix (served at <assetURL><pathAfterPublic>),
+		// so we can hash the discriminating files just like a legacy install.
+		if entry := f.ExtProbes.ByComposer(h.pkg); entry != nil {
+			ext.Requires = entry.Requires
+			if cands := f.extVersionComposer(ctx, assetURL, entry); len(cands) > 0 {
+				ext.Confirmed = true
+				ext.VersionCandidates = cands
+				ext.VersionSource, ext.VersionExact = "static-file hash", true
+				if len(cands) == 1 {
+					ext.Version = cands[0]
+				} else {
+					ext.Version = cands[0] + " – " + cands[len(cands)-1]
+				}
+			}
+		}
 		res.Extensions = append(res.Extensions, ext)
 	}
 	return res, nil
+}
+
+// afterResourcesPublic returns the sub-path served under /_assets/<md5>/ for a
+// DB file path — everything after "Resources/Public/". Empty if not public.
+func afterResourcesPublic(p string) string {
+	const m = "Resources/Public/"
+	if i := strings.Index(p, m); i >= 0 {
+		return p[i+len(m):]
+	}
+	return ""
+}
+
+// extVersionComposer pins a composer-mode extension's version by hashing its
+// discriminating public files under the /_assets/<md5>/ prefix.
+func (f *Fingerprinter) extVersionComposer(ctx context.Context, assetPrefix string, entry *ExtEntry) []string {
+	disc := entry.DiscriminatingFilesRanked()
+	if len(disc) == 0 {
+		return nil
+	}
+	var inter map[string]bool
+	interSet := false
+	probed := 0
+	for _, dbPath := range disc {
+		if probed >= 8 {
+			break
+		}
+		sub := afterResourcesPublic(dbPath)
+		if sub == "" {
+			continue
+		}
+		r, err := f.getProbe(ctx, assetPrefix+sub)
+		if err != nil || r == nil || r.Status != 200 || len(r.Body) == 0 || !r.isAsset() {
+			continue
+		}
+		probed++
+		sum := md5.Sum(r.Body)
+		vs := entry.VersionForHash(dbPath, hex.EncodeToString(sum[:]))
+		if len(vs) == 0 {
+			continue
+		}
+		set := toSet(vs)
+		if !interSet {
+			inter, interSet = set, true
+		} else if merged := intersectKeep(inter, set); len(merged) > 0 {
+			inter = merged
+		}
+	}
+	if !interSet {
+		return nil
+	}
+	cands := make([]string, 0, len(inter))
+	for v := range inter {
+		cands = append(cands, v)
+	}
+	sort.Sort(byVersion(cands))
+	return cands
 }

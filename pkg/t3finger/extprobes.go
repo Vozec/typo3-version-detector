@@ -42,6 +42,26 @@ type ExtProbe = ExtEntry
 type ExtProbeDB struct {
 	BuiltAt    string              `json:"builtAt,omitempty"`
 	Extensions map[string]ExtEntry `json:"extensions"`
+
+	composerIdx map[string]string `json:"-"` // composer name -> key
+}
+
+// ByComposer returns the entry for a Packagist name (vendor/pkg), or nil. Used
+// to version-fingerprint a composer-mode extension whose key we don't have.
+func (d *ExtProbeDB) ByComposer(name string) *ExtEntry {
+	if d.composerIdx == nil {
+		d.composerIdx = map[string]string{}
+		for key, e := range d.Extensions {
+			if e.Composer != "" {
+				d.composerIdx[e.Composer] = key
+			}
+		}
+	}
+	if key, ok := d.composerIdx[name]; ok {
+		e := d.Extensions[key]
+		return &e
+	}
+	return nil
 }
 
 // LoadExtProbeDB returns the embedded extension DB (decompressing it).

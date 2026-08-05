@@ -165,55 +165,91 @@ func runExtensions(args []string) {
 }
 
 func printExtensions(res *t3finger.ExtResult, all bool) {
-	fmt.Fprintf(stdout, "  %s     HTTP %d, %d bytes = not installed\n\n",
+	fmt.Fprintf(stdout, "  %s  HTTP %d, %d bytes = not installed\n",
 		cDim("baseline"), res.Baseline.Status, res.Baseline.Size)
-
 	if res.NotEnumerable {
-		fmt.Fprintf(stdout, "  %s\n\n", cYellow("⚠ "+firstNote(res.Notes)))
+		fmt.Fprintf(stdout, "  %s\n", cYellow("⚠ "+firstNote(res.Notes)))
 	}
 
+	// Collect rows (confirmed first, then unconfirmed if -all).
+	type erow struct {
+		e        *t3finger.Extension
+		plugin   string
+		version  string
+		vColor   func(string) string
+		cve      string
+		cColor   func(string) string
+		evidence string
+	}
+	var rows []erow
 	confirmed, unconfirmed := 0, 0
-	for _, e := range res.Extensions {
+	for i := range res.Extensions {
+		e := &res.Extensions[i]
 		if e.Confirmed {
 			confirmed++
 		} else {
 			unconfirmed++
+			if !all {
+				continue
+			}
+		}
+		ver, vc := "?", cDim
+		if e.Version != "" {
+			ver = e.Version
+			if e.VersionExact && len(e.VersionCandidates) <= 1 {
+				vc = cGreen
+			} else {
+				vc = cCyan
+			}
+		}
+		cve, cc := "-", cDim
+		switch {
+		case len(e.Vulns) > 0:
+			cve, cc = fmt.Sprintf("%d!", len(e.Vulns)), cRed
+		case len(e.VulnsPossible) > 0:
+			cve, cc = fmt.Sprintf("~%d", len(e.VulnsPossible)), cYellow
+		}
+		ev := e.Evidence
+		if e.Location != "" {
+			ev = e.Location
+		}
+		if !e.Confirmed {
+			ev = "stale symlink?"
+		}
+		rows = append(rows, erow{e, e.Package, ver, vc, cve, cc, ev})
+	}
+
+	if len(rows) > 0 {
+		// Column widths from plain text.
+		wP, wV, wC := len("PLUGIN"), len("VERSION"), len("CVE")
+		for _, r := range rows {
+			wP, wV, wC = max(wP, len(r.plugin)), max(wV, len(r.version)), max(wC, len(r.cve))
+		}
+		fmt.Fprintf(stdout, "\n  %s  %s  %s  %s\n",
+			cBold(pad("PLUGIN", wP)), cBold(pad("VERSION", wV)), cBold(pad("CVE", wC)), cBold("EVIDENCE"))
+		fmt.Fprintf(stdout, "  %s\n", cDim(strings.Repeat("─", wP+wV+wC+10+8)))
+		for _, r := range rows {
+			mark := cGreen("+")
+			if !r.e.Confirmed {
+				mark = cYellow("?")
+			}
+			fmt.Fprintf(stdout, "%s %s  %s  %s  %s\n",
+				mark, pad(r.plugin, wP), r.vColor(pad(r.version, wV)), r.cColor(pad(r.cve, wC)), cDim(r.evidence))
 		}
 	}
 
-	for _, e := range res.Extensions {
-		if !e.Confirmed && !all {
+	// Per-plugin CVE detail (only for plugins that have any).
+	for _, r := range rows {
+		if len(r.e.Vulns) == 0 && len(r.e.VulnsPossible) == 0 {
 			continue
 		}
-		ver := ""
-		if e.Version != "" {
-			src := e.VersionSource
-			if e.VersionExact {
-				src = "✓ " + src
-			}
-			ver = "  " + cCyan("v"+e.Version) + cDim(" ("+src+")")
+		fmt.Fprintf(stdout, "\n  %s\n", cBold(r.plugin))
+		for _, v := range r.e.Vulns {
+			fmt.Fprintf(stdout, "     %s %s\n", cRed("⚠"), advLine(v))
 		}
-		if e.Confirmed {
-			ev := e.Evidence
-			if e.Location != "" {
-				ev = e.Location
-			}
-			name := e.Package
-			if e.ComposerName != "" {
-				name += cDim(" [" + e.ComposerName + "]")
-			}
-			fmt.Fprintf(stdout, "  %s %s%s  %s\n", cGreen("[+]"), cBold(name), ver, cDim(ev))
-			if n := len(e.Requires); n > 0 {
-				fmt.Fprintf(stdout, "      %s %s\n", cDim("deps"), cDim(depsSummary(e.Requires)))
-			}
-			for _, v := range e.Vulns {
-				fmt.Fprintf(stdout, "      %s %s\n", cRed("⚠"), advLine(v))
-			}
-			if n := len(e.VulnsPossible); n > 0 {
-				fmt.Fprintf(stdout, "      %s %s\n", cYellow("~"), cDim(fmt.Sprintf("%d known CVE%s for this package — version unknown, verify", n, plural2(n))))
-			}
-		} else {
-			fmt.Fprintf(stdout, "  %s %s  %s\n", cYellow("[?]"), e.Package, cDim("(directory only — stale symlink?)"))
+		if n := len(r.e.VulnsPossible); n > 0 {
+			fmt.Fprintf(stdout, "     %s %s\n", cYellow("~"),
+				cDim(fmt.Sprintf("%d known CVE%s for this package — version unknown, verify", n, plural2(n))))
 		}
 	}
 
@@ -229,9 +265,20 @@ func printExtensions(res *t3finger.ExtResult, all bool) {
 		fmt.Fprintf(stdout, ", %s %d errors", cRed("✗"), res.Errors)
 	}
 	fmt.Fprintln(stdout)
-	if res.Errors > 0 {
-		fmt.Fprintln(stdout, cDim("  errors usually mean rate limiting — lower --rate and -c, then retry"))
+}
+
+func pad(s string, w int) string {
+	if n := dispLen(s); n < w {
+		return s + strings.Repeat(" ", w-n)
 	}
+	return s
+}
+
+func max(a, b int) int {
+	if a > b {
+		return a
+	}
+	return b
 }
 
 // depsSummary renders the most relevant dependencies (TYPO3 + other extensions

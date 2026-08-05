@@ -39,6 +39,9 @@ type Fingerprinter struct {
 	// Rate caps requests per second across all workers (0 = unlimited).
 	Rate float64
 
+	// probeHTTP is like HTTP but does not follow redirects (for asset probes).
+	probeHTTP *http.Client
+
 	limiter *rateLimiter
 	limOnce sync.Once
 }
@@ -93,9 +96,19 @@ func New(opts ...Option) (*Fingerprinter, error) {
 			}
 			tr.Proxy = http.ProxyURL(pu)
 		}
-		// No client-level redirect follow surprises: keep them, but the callers
-		// treat 3xx as no-evidence for asset probes.
+		// The main client follows redirects (identify pages may 302 to a locale
+		// or http→https). Asset probes use probeHTTP, which does NOT follow: a
+		// static asset that 302s is NOT the asset (a redirect to an HTML page),
+		// so following it and hashing the result would fabricate junk matches.
 		f.HTTP = &http.Client{Timeout: 20 * time.Second, Transport: tr}
+		f.probeHTTP = &http.Client{
+			Timeout:       20 * time.Second,
+			Transport:     tr,
+			CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
+		}
+	}
+	if f.probeHTTP == nil {
+		f.probeHTTP = f.HTTP // custom client supplied via WithHTTPClient
 	}
 	if f.ProbeConcurrency <= 0 {
 		f.ProbeConcurrency = 16
@@ -126,9 +139,19 @@ type httpResult struct {
 	Header http.Header
 }
 
-// get performs a rate-limited GET, retrying transient network errors. A real
-// HTTP response (any status) is returned as-is; only outright failures error.
+// get performs a rate-limited GET (following redirects), retrying transient
+// network errors. A real HTTP response (any status) is returned as-is.
 func (f *Fingerprinter) get(ctx context.Context, rawURL string) (*httpResult, error) {
+	return f.doGet(ctx, rawURL, f.HTTP)
+}
+
+// getProbe is like get but does NOT follow redirects — for asset probes, where
+// a 3xx means "not the asset". The returned Status is the real 200/302/404.
+func (f *Fingerprinter) getProbe(ctx context.Context, rawURL string) (*httpResult, error) {
+	return f.doGet(ctx, rawURL, f.probeHTTP)
+}
+
+func (f *Fingerprinter) doGet(ctx context.Context, rawURL string, client *http.Client) (*httpResult, error) {
 	for attempt := 0; ; attempt++ {
 		f.rl().wait(ctx)
 		req, err := http.NewRequestWithContext(ctx, http.MethodGet, rawURL, nil)
@@ -137,7 +160,7 @@ func (f *Fingerprinter) get(ctx context.Context, rawURL string) (*httpResult, er
 		}
 		req.Header.Set("User-Agent", f.UserAgent)
 		req.Header.Set("Accept", "*/*")
-		resp, err := f.HTTP.Do(req)
+		resp, err := client.Do(req)
 		if err != nil {
 			if attempt < 3 && ctx.Err() == nil && isTransient(err) {
 				time.Sleep(time.Duration(attempt+1) * 300 * time.Millisecond)
@@ -155,6 +178,14 @@ func (f *Fingerprinter) get(ctx context.Context, rawURL string) (*httpResult, er
 		}
 		return &httpResult{Status: resp.StatusCode, Body: body, URL: resp.Request.URL, Header: resp.Header}, nil
 	}
+}
+
+// isAsset reports whether the response body is plausibly the static asset at
+// path (not an HTML error/redirect page). A real .css/.js/.svg/… is never
+// served as text/html, so an HTML content-type means "not the asset".
+func (r *httpResult) isAsset() bool {
+	ct := strings.ToLower(r.Header.Get("Content-Type"))
+	return !strings.Contains(ct, "text/html")
 }
 
 // head issues a GET but the caller only cares about status/size — used for the

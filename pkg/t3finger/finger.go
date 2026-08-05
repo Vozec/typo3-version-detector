@@ -321,7 +321,7 @@ func (f *Fingerprinter) identify(ctx context.Context, base string, res *VersionR
 // file (best possible signal). Returns the version string, or "".
 func (f *Fingerprinter) exactVersionReads(ctx context.Context, base string, res *VersionResult) string {
 	// composer.lock at docroot pins typo3/cms-core exactly.
-	if r, err := f.get(ctx, base+"/composer.lock"); err == nil && r != nil && r.Status == 200 {
+	if r, err := f.getProbe(ctx, base+"/composer.lock"); err == nil && r != nil && r.Status == 200 {
 		if m := reLockCmsCore.FindSubmatch(r.Body); m != nil {
 			res.IsTypo3 = true
 			res.Notes = append(res.Notes, "read exact version from exposed /composer.lock (typo3/cms-core)")
@@ -329,14 +329,14 @@ func (f *Fingerprinter) exactVersionReads(ctx context.Context, base string, res 
 		}
 	}
 	// docroot composer.json → require constraint (coarse, note only).
-	if r, err := f.get(ctx, base+"/composer.json"); err == nil && r != nil && r.Status == 200 {
+	if r, err := f.getProbe(ctx, base+"/composer.json"); err == nil && r != nil && r.Status == 200 {
 		if strings.Contains(string(r.Body), "typo3/cms-core") || strings.Contains(string(r.Body), "typo3/cms-") {
 			res.IsTypo3 = true
 			res.Notes = append(res.Notes, "site /composer.json is exposed (declares typo3/cms-* dependency)")
 		}
 	}
 	// core sysext ext_emconf.php (legacy) — exact core version.
-	if r, err := f.get(ctx, base+"/typo3/sysext/core/ext_emconf.php"); err == nil && r != nil && r.Status == 200 {
+	if r, err := f.getProbe(ctx, base+"/typo3/sysext/core/ext_emconf.php"); err == nil && r != nil && r.Status == 200 {
 		if m := reEmconfVersion.FindSubmatch(r.Body); m != nil {
 			res.IsTypo3 = true
 			res.Notes = append(res.Notes, "read exact version from typo3/sysext/core/ext_emconf.php")
@@ -365,7 +365,7 @@ func (f *Fingerprinter) calibrate(ctx context.Context, base, basePath string) ca
 		prefix = base + "/" + strings.Trim(basePath, "/")
 	}
 	bogus := prefix + "/typo3/sysext/core/Resources/Public/" + randToken() + "-nope.css"
-	r, err := f.get(ctx, bogus)
+	r, err := f.getProbe(ctx, bogus)
 	if err != nil || r == nil {
 		return calib{}
 	}
@@ -396,10 +396,12 @@ func (f *Fingerprinter) hashLegacyProbes(ctx context.Context, base string, res *
 			defer wg.Done()
 			defer func() { <-sem }()
 			fp := FileProbe{Path: p}
-			r, err := f.get(ctx, prefix+"/"+p)
+			r, err := f.getProbe(ctx, prefix+"/"+p)
 			if err == nil && r != nil {
 				fp.Status = r.Status
-				if r.Status == 200 && len(r.Body) > 0 {
+				// A real static asset is a direct 200 that isn't an HTML page.
+				// A 3xx (redirect to a page) or an HTML body is NOT the asset.
+				if r.Status == 200 && len(r.Body) > 0 && r.isAsset() {
 					sum := md5.Sum(r.Body)
 					fp.MD5 = hex.EncodeToString(sum[:])
 					fp.Size = len(r.Body)
@@ -410,6 +412,8 @@ func (f *Fingerprinter) hashLegacyProbes(ctx context.Context, base string, res *
 					} else {
 						fp.Status = -1 // mark as catch-all so it's dropped below
 					}
+				} else if r.Status == 200 && !r.isAsset() {
+					fp.Status = -1 // HTML page, not the asset → drop from the report
 				}
 			}
 			out[i] = fp
@@ -456,10 +460,10 @@ func (f *Fingerprinter) hashDiscoveredAssets(ctx context.Context, base string, a
 			defer wg.Done()
 			defer func() { <-sem }()
 			fp := FileProbe{Path: compactAssetPath(a)}
-			r, err := f.get(ctx, a)
+			r, err := f.getProbe(ctx, a)
 			if err == nil && r != nil {
 				fp.Status = r.Status
-				if r.Status == 200 && len(r.Body) > 0 {
+				if r.Status == 200 && len(r.Body) > 0 && r.isAsset() {
 					sum := md5.Sum(r.Body)
 					fp.MD5 = hex.EncodeToString(sum[:])
 					fp.Size = len(r.Body)

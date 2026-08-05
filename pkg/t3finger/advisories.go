@@ -117,8 +117,7 @@ func matchAndGroup(group, v string) bool {
 }
 
 func matchAtom(atom, v string) bool {
-	op := ">="
-	rest := atom
+	op, rest := "", atom
 	switch {
 	case strings.HasPrefix(atom, ">="):
 		op, rest = ">=", atom[2:]
@@ -132,8 +131,18 @@ func matchAtom(atom, v string) bool {
 		op, rest = "<", atom[1:]
 	case strings.HasPrefix(atom, "="):
 		op, rest = "=", atom[1:]
+	case strings.HasPrefix(atom, "^"):
+		return matchCaret(atom[1:], v)
+	case strings.HasPrefix(atom, "~"):
+		return matchTilde(atom[1:], v)
 	}
 	rest = strings.TrimSpace(strings.TrimPrefix(rest, "v"))
+	// Fail CLOSED: an atom with no recognized operator, or whose version isn't
+	// numeric, must not silently match every version (that produced false CVE
+	// positives on the extension advisory feed's caret/tilde/`*` constraints).
+	if op == "" || !startsNumeric(rest) {
+		return false
+	}
 	c := CompareVersions(v, rest)
 	switch op {
 	case ">=":
@@ -148,6 +157,53 @@ func matchAtom(atom, v string) bool {
 		return c == 0
 	}
 	return false
+}
+
+func startsNumeric(s string) bool {
+	return s != "" && s[0] >= '0' && s[0] <= '9'
+}
+
+// matchCaret evaluates a Composer caret range "^x.y.z": >= x.y.z and < next
+// breaking version (bump the left-most non-zero component).
+func matchCaret(base, v string) bool {
+	base = strings.TrimPrefix(strings.TrimSpace(base), "v")
+	if !startsNumeric(base) {
+		return false
+	}
+	p := splitVer(base)
+	var upper [3]int
+	switch {
+	case p[0] > 0:
+		upper = [3]int{p[0] + 1, 0, 0}
+	case p[1] > 0:
+		upper = [3]int{0, p[1] + 1, 0}
+	default:
+		upper = [3]int{0, 0, p[2] + 1}
+	}
+	return CompareVersions(v, base) >= 0 && cmpVer(splitVer(v), upper) < 0
+}
+
+// matchTilde evaluates "~x.y" (>= x.y, < x.(y+1)) and "~x.y.z" (>= x.y.z, < x.(y+1)).
+func matchTilde(base, v string) bool {
+	base = strings.TrimPrefix(strings.TrimSpace(base), "v")
+	if !startsNumeric(base) {
+		return false
+	}
+	p := splitVer(base)
+	upper := [3]int{p[0], p[1] + 1, 0}
+	return CompareVersions(v, base) >= 0 && cmpVer(splitVer(v), upper) < 0
+}
+
+func cmpVer(a, b [3]int) int {
+	for i := 0; i < 3; i++ {
+		if a[i] != b[i] {
+			if a[i] < b[i] {
+				return -1
+			}
+			return 1
+		}
+	}
+	return 0
 }
 
 // FetchAdvisoriesFor queries the Packagist advisory feed for the given packages

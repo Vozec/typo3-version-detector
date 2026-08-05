@@ -65,6 +65,34 @@ func TestMatchConstraint(t *testing.T) {
 	}
 }
 
+func TestConstraintCaretTildeFailClosed(t *testing.T) {
+	cases := []struct {
+		c, v string
+		want bool
+	}{
+		// caret: ^1.2.3 => >=1.2.3, <2.0.0
+		{"^1.2.3", "1.2.3", true},
+		{"^1.2.3", "1.9.0", true},
+		{"^1.2.3", "2.0.0", false},
+		{"^1.2.3", "1.2.2", false},
+		// caret on 0.x: ^0.3.0 => >=0.3.0, <0.4.0
+		{"^0.3.0", "0.3.5", true},
+		{"^0.3.0", "0.4.0", false},
+		// tilde: ~1.4 => >=1.4.0, <1.5.0
+		{"~1.4", "1.4.9", true},
+		{"~1.4", "1.5.0", false},
+		// fail-closed: unparseable / wildcard must NOT match everything
+		{"*", "9.9.9", false},
+		{"dev-main", "13.4.0", false},
+		{"1.0 - 2.0", "1.5.0", false}, // hyphen range unsupported -> fail closed
+	}
+	for _, tc := range cases {
+		if got := matchConstraint(tc.c, tc.v); got != tc.want {
+			t.Errorf("matchConstraint(%q,%q)=%v want %v", tc.c, tc.v, got, tc.want)
+		}
+	}
+}
+
 func TestDBMerge(t *testing.T) {
 	a := &DB{
 		Files:    map[string]map[string][]string{"x.css": {"h1": {"12.4.8"}}},

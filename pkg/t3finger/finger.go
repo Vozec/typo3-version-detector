@@ -4,12 +4,42 @@ import (
 	"context"
 	"crypto/md5"
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"net/url"
+	"regexp"
 	"sort"
 	"strings"
 	"sync"
 )
+
+// reImportmap captures the JSON of a backend ES-module importmap. TYPO3 12+
+// renders one on /typo3/; its module URLs are the richest composer-mode version
+// signal (dozens of core JS files, added/removed/renamed each release).
+var reImportmap = regexp.MustCompile(`(?is)<script[^>]+type=["']importmap["'][^>]*>(.*?)</script>`)
+
+// extractImportmapURLs returns the module URLs from an importmap script block.
+func extractImportmapURLs(body []byte) []string {
+	m := reImportmap.FindSubmatch(body)
+	if m == nil {
+		return nil
+	}
+	var doc struct {
+		Imports map[string]string `json:"imports"`
+	}
+	if err := json.Unmarshal(m[1], &doc); err != nil {
+		return nil
+	}
+	out := make([]string, 0, len(doc.Imports))
+	seen := map[string]bool{}
+	for _, u := range doc.Imports {
+		if u != "" && !seen[u] {
+			seen[u] = true
+			out = append(out, u)
+		}
+	}
+	return out
+}
 
 // Mode is the install layout of a TYPO3 target.
 type Mode string
@@ -48,6 +78,9 @@ type VersionResult struct {
 	// ExtensionsHint lists extension keys passively discovered in the served
 	// HTML (from typo3conf/ext/<key>/ asset URLs) — free, no enumeration needed.
 	ExtensionsHint []string `json:"extensionsHint,omitempty"`
+	// Findings holds security-relevant pre-auth observations (exposed install
+	// tool, debug mode, XML sitemap, host-header disclosure, …).
+	Findings []Finding `json:"findings,omitempty"`
 	// Vulnerabilities lists published core advisories affecting the detected
 	// version. Maybe holds advisories affecting only some candidates when the
 	// version is a range (uncertain until the version is pinned).
@@ -94,10 +127,16 @@ func (f *Fingerprinter) Detect(ctx context.Context, rawURL string) (*VersionResu
 		inter = intersectKeep(inter, s)
 	}
 
-	legacy := f.hashLegacyProbes(ctx, base, res, cal)
-	for _, fp := range legacy {
-		if fp.Matched {
-			narrow(fp.Versions)
+	// Legacy path-probing hits typo3/sysext/** directly — pointless in composer
+	// mode (vendor/ is hidden, every such path 404s), where it would waste ~80
+	// requests per target. There we rely on discovered/importmap assets instead.
+	var legacy []FileProbe
+	if res.Mode != ModeComposer {
+		legacy = f.hashLegacyProbes(ctx, base, res, cal)
+		for _, fp := range legacy {
+			if fp.Matched {
+				narrow(fp.Versions)
+			}
 		}
 	}
 	for _, fp := range f.hashDiscoveredAssets(ctx, base, assets, res, cal) {
@@ -163,6 +202,11 @@ func (f *Fingerprinter) Detect(ctx context.Context, rawURL string) (*VersionResu
 		}
 		sort.Sort(byVersion(res.Candidates))
 	}
+
+	// Behavioural confirmation + major-version boundary (eID handlers), and
+	// security-relevant recon (install tool, debug mode, sitemap, host header).
+	f.probeBehavioral(ctx, base, res)
+	f.probeRecon(ctx, base, res)
 
 	f.summarize(res, exact)
 	f.assessVulnerabilities(res)
@@ -295,6 +339,16 @@ func (f *Fingerprinter) identify(ctx context.Context, base string, res *VersionR
 		}
 		for _, mm := range reAnyAsset.FindAllSubmatch(body, -1) {
 			addAsset(string(mm[1]), r.finalURL(full))
+		}
+		// The backend importmap (on /typo3/) lists dozens of core JS module URLs
+		// that aren't href/src — harvest them: their content pins the version far
+		// more tightly than the handful of FE assets (esp. in composer mode).
+		if imps := extractImportmapURLs(body); len(imps) > 0 {
+			markers["backend importmap (ES modules)"] = true
+			res.IsTypo3 = true
+			for _, u := range imps {
+				addAsset(u, r.finalURL(full))
+			}
 		}
 	}
 
@@ -438,13 +492,28 @@ func (f *Fingerprinter) hashDiscoveredAssets(ctx context.Context, base string, a
 	if len(assets) == 0 || f.DB.Empty() {
 		return nil
 	}
-	// Only bother with same-host assets.
+	// Only bother with same-host assets; prioritise the ones the DB can match
+	// (depth-1 JS/CSS files whose basename the DB knows) and cap the count so a
+	// large importmap doesn't explode into hundreds of requests.
 	host := hostOf(base)
-	var targets []string
+	known := f.dbBasenames()
+	var priority, rest []string
+	seen := map[string]bool{}
 	for _, a := range assets {
-		if hostOf(a) == host {
-			targets = append(targets, a)
+		if hostOf(a) != host || seen[a] {
+			continue
 		}
+		seen[a] = true
+		if bn := baseNameNoQuery(a); known[bn] {
+			priority = append(priority, a)
+		} else {
+			rest = append(rest, a)
+		}
+	}
+	const maxAssets = 40
+	targets := append(priority, rest...)
+	if len(targets) > maxAssets {
+		targets = targets[:maxAssets]
 	}
 	if len(targets) == 0 {
 		return nil
@@ -510,8 +579,9 @@ func (f *Fingerprinter) legacyProbePaths() []string {
 	}
 	// Content-discriminating paths (hash varies) narrow by content; a bounded
 	// set of presence-discriminating paths (added/removed across releases) power
-	// the add/remove-boundary narrowing.
-	add(f.DB.DiscriminatingPaths(), 40)
+	// the add/remove-boundary narrowing. Ranked by discriminating power so the
+	// probe budget hits the files that change most.
+	add(f.DB.DiscriminatingPathsRanked(), 40)
 	add(f.DB.PresenceDiscriminatingPaths(), 24)
 	return out
 }
@@ -651,6 +721,37 @@ func hostOf(raw string) string {
 		return ""
 	}
 	return u.Host
+}
+
+// dbBasenames returns the set of file basenames the version DB knows, so
+// harvested asset URLs whose basename matches (and are therefore content-
+// matchable) can be probed first.
+func (f *Fingerprinter) dbBasenames() map[string]bool {
+	if f.dbBase != nil {
+		return f.dbBase
+	}
+	m := map[string]bool{}
+	for p := range f.DB.Files {
+		if i := strings.LastIndexByte(p, '/'); i >= 0 {
+			m[p[i+1:]] = true
+		} else {
+			m[p] = true
+		}
+	}
+	f.dbBase = m
+	return m
+}
+
+// baseNameNoQuery returns the last path segment of a URL, without query/fragment.
+func baseNameNoQuery(raw string) string {
+	if u, err := url.Parse(raw); err == nil {
+		p := u.Path
+		if i := strings.LastIndexByte(p, '/'); i >= 0 {
+			return p[i+1:]
+		}
+		return p
+	}
+	return raw
 }
 
 // deriveBasePath extracts an install sub-path from a leaked asset URL, e.g.

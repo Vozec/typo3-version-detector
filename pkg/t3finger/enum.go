@@ -47,6 +47,9 @@ type Extension struct {
 	// VersionSources lists how the version was determined ("ext_emconf.php",
 	// "static-file hash", …) when more than one method agreed.
 	VersionExact bool `json:"versionExact,omitempty"` // pinned by static-file hash
+	// VersionCandidates is the full candidate set when Version is a range (from
+	// static-file hashing) — used for accurate per-candidate CVE assessment.
+	VersionCandidates []string `json:"versionCandidates,omitempty"`
 	// Requires is the extension's declared dependencies (from the probe DB).
 	Requires map[string]string `json:"requires,omitempty"`
 	// Vulns lists known advisories affecting this extension version (with -cve).
@@ -111,9 +114,13 @@ func (f *Fingerprinter) EnumerateExtensions(ctx context.Context, target string, 
 	// every /_assets/<x>/ the same way (blanket rule / SPA catch-all): the
 	// technique cannot discriminate here.
 	if cs != 404 {
+		// The host answers every /_assets/<x>/ the same way (blanket rule / SPA
+		// catch-all): the technique can't discriminate, so don't sweep thousands
+		// of packages producing all-garbage hits — report and return.
 		res.NotEnumerable = true
 		res.Notes = append(res.Notes,
-			"control probe returned HTTP "+itoa(cs)+" (expected 404): host answers /_assets/<hash>/ uniformly; extension enumeration is unreliable here")
+			"control probe returned HTTP "+itoa(cs)+" (expected 404): host answers /_assets/<hash>/ uniformly; extension enumeration is unreliable here — skipped")
+		return res, nil
 	}
 
 	type hit struct {
@@ -141,9 +148,14 @@ func (f *Fingerprinter) EnumerateExtensions(ctx context.Context, target string, 
 			defer wg.Done()
 			defer func() { <-sem }()
 			st, sz, ok := f.head(ctx, AssetURL(base, pkg))
+			// Baseline is a clean 404 (verified above); an installed package
+			// answers 403. Discriminate on STATUS only — the host's 404 body size
+			// varies by URL (it echoes the hash), so a size compare flags random
+			// absent packages as hits.
 			if !ok {
 				atomic.AddInt64(&errors, 1)
-			} else if st != cs || sz != csz {
+			} else if st != cs {
+				_ = sz
 				mu.Lock()
 				hits = append(hits, hit{pkg, st})
 				mu.Unlock()

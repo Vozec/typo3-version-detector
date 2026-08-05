@@ -212,6 +212,30 @@ func printVersion(r *t3finger.VersionResult, verbose, force bool) {
 			r.ExtensionsHint, cDim(" · "))
 	}
 
+	if len(r.Findings) > 0 {
+		fmt.Fprintf(stdout, "\n  %s\n", cBold("findings"))
+		for _, fd := range r.Findings {
+			bullet, sev := cDim("•"), fd.Severity
+			switch fd.Severity {
+			case "high":
+				bullet, sev = cRed("‼"), cRed("high")
+			case "medium":
+				bullet, sev = cYellow("▲"), cYellow("medium")
+			case "low":
+				bullet, sev = cYellow("•"), cDim("low")
+			default:
+				sev = cDim("info")
+			}
+			fmt.Fprintf(stdout, "   %s [%s] %s\n", bullet, sev, fd.Title)
+			if fd.Detail != "" {
+				fmt.Fprintf(stdout, "       %s\n", cDim(fd.Detail))
+			}
+			if fd.URL != "" {
+				fmt.Fprintf(stdout, "       %s\n", cDim(fd.URL))
+			}
+		}
+	}
+
 	if n := len(r.Vulnerabilities); n > 0 {
 		fmt.Fprintf(stdout, "\n  %s   %s\n", cRed(cBold(fmt.Sprintf("⚠ %d known vulnerabilit%s", n, plural(n, "y", "ies")))),
 			cDim(severityBreakdown(r.Vulnerabilities)))

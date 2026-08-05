@@ -65,6 +65,16 @@ var (
 	reExtKeyInPath = regexp.MustCompile(`(?:typo3conf/ext/|EXT:)([a-z0-9][a-z0-9_]{1,60})`)
 )
 
+// eID behavioral probes. TYPO3 registers eID entrypoints reachable at
+// /index.php?eID=<name>; each returns a handler-specific status even without
+// valid params, which is a strong pre-auth TYPO3 marker (survives stripped HTML
+// and custom themes). Some were removed at a known release, giving a version
+// boundary. Verified across 11.5/12.4/13.4 source (ext_localconf eID_include).
+var eidAlways = []string{"dumpFile", "tx_cms_showpic"} // present in all supported versions
+// eidRemovedIn13 were registered in ≤12 and removed in 13.0 → presence ⇒ ≤12,
+// clean 404 (on a confirmed-TYPO3 host) ⇒ ≥13.
+var eidRemovedIn13 = []string{"requirejs", "adminPanel_save"}
+
 // ---- content-based version parsing (exact when the file is exposed) ----
 
 var (

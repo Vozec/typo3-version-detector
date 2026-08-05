@@ -140,6 +140,37 @@ func (d *DB) PresenceDiscriminatingPaths() []string {
 	return out
 }
 
+// DiscriminatingPathsRanked returns discriminating paths ordered by how much
+// they narrow the version (most hash-buckets first), so a bounded probe budget
+// spends on the files that actually change most per patch — not an alphabetical
+// slice. Ties broken by shortest path (stable top-level assets).
+func (d *DB) DiscriminatingPathsRanked() []string {
+	type pc struct {
+		p string
+		n int
+	}
+	var r []pc
+	for p, b := range d.Files {
+		if len(b) > 1 {
+			r = append(r, pc{p, len(b)})
+		}
+	}
+	sort.Slice(r, func(i, j int) bool {
+		if r[i].n != r[j].n {
+			return r[i].n > r[j].n
+		}
+		if len(r[i].p) != len(r[j].p) {
+			return len(r[i].p) < len(r[j].p)
+		}
+		return r[i].p < r[j].p
+	})
+	out := make([]string, len(r))
+	for i, x := range r {
+		out[i] = x.p
+	}
+	return out
+}
+
 // AllPaths returns every served path known to the DB, sorted.
 func (d *DB) AllPaths() []string {
 	out := make([]string, 0, len(d.Files))

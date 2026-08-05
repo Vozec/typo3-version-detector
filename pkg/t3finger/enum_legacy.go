@@ -235,8 +235,14 @@ func (f *Fingerprinter) EnumerateExtensionsLegacy(ctx context.Context, target st
 		}
 		// 1) Version by static-file hash diff (DB-driven, metadata-independent).
 		if entry != nil {
-			if v := f.extVersionByHash(ctx, extBase, entry); v != "" {
-				ext.Version, ext.VersionSource, ext.VersionExact = v, "static-file hash", true
+			if cands := f.extVersionByHash(ctx, extBase, entry); len(cands) > 0 {
+				ext.VersionCandidates = cands
+				ext.VersionSource, ext.VersionExact = "static-file hash", true
+				if len(cands) == 1 {
+					ext.Version = cands[0]
+				} else {
+					ext.Version = cands[0] + " – " + cands[len(cands)-1]
+				}
 			}
 		}
 		// 2) Fall back to metadata files for the version.
@@ -266,11 +272,11 @@ func (f *Fingerprinter) EnumerateExtensionsLegacy(ctx context.Context, target st
 
 // extVersionByHash pins an extension's installed version by hashing the
 // discriminating static files the DB knows for it and intersecting the matching
-// version sets. Probes at most a few files to stay light.
-func (f *Fingerprinter) extVersionByHash(ctx context.Context, extBase string, entry *ExtEntry) string {
+// version sets. Returns the sorted candidate versions (1 = exact), or nil.
+func (f *Fingerprinter) extVersionByHash(ctx context.Context, extBase string, entry *ExtEntry) []string {
 	disc := entry.DiscriminatingFilesRanked()
 	if len(disc) == 0 {
-		return ""
+		return nil
 	}
 	const maxFiles = 8
 	if len(disc) > maxFiles {
@@ -279,8 +285,8 @@ func (f *Fingerprinter) extVersionByHash(ctx context.Context, extBase string, en
 	var inter map[string]bool
 	interSet := false
 	for _, path := range disc {
-		r, err := f.get(ctx, extBase+path)
-		if err != nil || r == nil || r.Status != 200 || len(r.Body) == 0 {
+		r, err := f.getProbe(ctx, extBase+path)
+		if err != nil || r == nil || r.Status != 200 || len(r.Body) == 0 || !r.isAsset() {
 			continue
 		}
 		sum := md5.Sum(r.Body)
@@ -296,18 +302,14 @@ func (f *Fingerprinter) extVersionByHash(ctx context.Context, extBase string, en
 		}
 	}
 	if !interSet || len(inter) == 0 {
-		return ""
+		return nil
 	}
-	var cands []string
+	cands := make([]string, 0, len(inter))
 	for v := range inter {
 		cands = append(cands, v)
 	}
 	sort.Sort(byVersion(cands))
-	if len(cands) == 1 {
-		return cands[0]
-	}
-	// Multiple candidates: report the tight range (newest wins for CVE safety).
-	return cands[0] + " – " + cands[len(cands)-1]
+	return cands
 }
 
 // AnnotateExtensionCVEs looks up known advisories for every enumerated
@@ -345,10 +347,28 @@ func (f *Fingerprinter) AnnotateExtensionCVEs(ctx context.Context, res *ExtResul
 			continue
 		}
 		for _, e := range exts {
-			if e.Version != "" {
-				e.Vulns = db.For(e.Version) // version known → certain matches
-			} else {
-				e.VulnsPossible = append([]Advisory(nil), db.Advisories...) // version unknown → all, possible
+			switch {
+			case len(e.VersionCandidates) > 1:
+				// A version BAND: an advisory affecting every candidate is
+				// certain; one affecting only some is "possible". (Fixes the bug
+				// where only the low end of a "lo – hi" string was ever checked.)
+				for _, a := range db.Advisories {
+					hit := 0
+					for _, v := range e.VersionCandidates {
+						if a.Affects(v) {
+							hit++
+						}
+					}
+					if hit == len(e.VersionCandidates) {
+						e.Vulns = append(e.Vulns, a)
+					} else if hit > 0 {
+						e.VulnsPossible = append(e.VulnsPossible, a)
+					}
+				}
+			case e.Version != "":
+				e.Vulns = db.For(e.Version) // exact version → certain matches
+			default:
+				e.VulnsPossible = append([]Advisory(nil), db.Advisories...) // unknown → all possible
 			}
 		}
 	}

@@ -42,6 +42,7 @@ type Fingerprinter struct {
 	// probeHTTP is like HTTP but does not follow redirects (for asset probes).
 	probeHTTP *http.Client
 
+	dbBase  map[string]bool // cached DB path basenames
 	limiter *rateLimiter
 	limOnce sync.Once
 }
@@ -130,6 +131,11 @@ func (f *Fingerprinter) rl() *rateLimiter {
 	return f.limiter
 }
 
+// maxBodyBytes bounds a probe's body read. It MUST match the builder's hash
+// limit (builder.go) so a live asset in the 8–16 MB range hashes to the same
+// md5 on both sides (else it could never match the DB).
+const maxBodyBytes = 16 << 20
+
 // httpResult is the minimal outcome of a probe: status + body (may be nil for
 // HEAD-like semantics; here we always GET but limit the body).
 type httpResult struct {
@@ -168,7 +174,7 @@ func (f *Fingerprinter) doGet(ctx context.Context, rawURL string, client *http.C
 			}
 			return nil, err
 		}
-		body, e := io.ReadAll(io.LimitReader(resp.Body, 8<<20))
+		body, e := io.ReadAll(io.LimitReader(resp.Body, maxBodyBytes))
 		resp.Body.Close()
 		if e != nil {
 			if attempt < 3 && ctx.Err() == nil {
@@ -178,6 +184,26 @@ func (f *Fingerprinter) doGet(ctx context.Context, rawURL string, client *http.C
 		}
 		return &httpResult{Status: resp.StatusCode, Body: body, URL: resp.Request.URL, Header: resp.Header}, nil
 	}
+}
+
+// getHost issues a non-redirect GET with a spoofed Host header — used to probe
+// TYPO3's trusted-host check, which throws (500 + "trustedHostsPattern") on a
+// mismatch even in Production, confirming TYPO3 and disclosing the config var.
+func (f *Fingerprinter) getHost(ctx context.Context, rawURL, host string) *httpResult {
+	f.rl().wait(ctx)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, rawURL, nil)
+	if err != nil {
+		return nil
+	}
+	req.Header.Set("User-Agent", f.UserAgent)
+	req.Host = host
+	resp, err := f.probeHTTP.Do(req)
+	if err != nil {
+		return nil
+	}
+	body, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+	resp.Body.Close()
+	return &httpResult{Status: resp.StatusCode, Body: body, URL: resp.Request.URL, Header: resp.Header}
 }
 
 // isAsset reports whether the response body is plausibly the static asset at

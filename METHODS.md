@@ -44,7 +44,43 @@ carry versions and are used for extension-version detection.)
 
 ---
 
+## Tier 1b — behavioural confirmation & major-version bracket  ✅
+
+Reachable even when the HTML is stripped / custom-themed (robust pre-auth):
+
+- **eID handlers** (`/index.php?eID=<name>`): `dumpFile` → **403**, `tx_cms_showpic`
+  → **410**, an unknown eID → **404**. This status triple is a near-unique TYPO3
+  signature (verified in `frontend`/`core` `ext_localconf.php` across 11/12/13).
+  Confirms TYPO3 with no reliance on markup.
+- **Major boundary**: `requirejs`/`adminPanel_save` eIDs exist in ≤12 and were
+  **removed in 13.0** — present ⇒ ≤12, absent (on a confirmed host) ⇒ ≥13. The
+  backend **importmap** (`<script type="importmap">` on `/typo3/`) exists only in
+  12+ ⇒ ≥12. Together they pin the major: importmap + requirejs ⇒ 12.x; no
+  importmap + requirejs ⇒ 11.x; no requirejs ⇒ ≥13. Applied as a floor/ceiling
+  that narrows the candidate set.
+
+## Tier 1c — security-relevant recon (Findings)  ✅
+
+Surfaced as structured findings, and doubling as TYPO3 confirmation:
+
+- **Install Tool** (`/typo3/install.php`): locked (info) · password login exposed
+  (medium) · FIRST_INSTALL installer reachable (high).
+- **Debug mode**: a crafted page type triggers the DebugExceptionHandler; its
+  `Uncaught TYPO3 Exception` / `trace-file-path` markup leaks absolute paths,
+  class names and stack frames (high).
+- **XML sitemap** (`/?type=1533906435`, EXT:seo): enumerates the full page tree,
+  including unlinked pages (low).
+- **Trusted-host disclosure**: a spoofed `Host:` header throws a 500 whose body
+  names `SYS/trustedHostsPattern` — confirms TYPO3 even in Production.
+
 ## Tier 2 — static-asset content hashing (the workhorse)  ✅
+
+**Composer-mode importmap harvesting** ✅ — the `/typo3/` importmap lists dozens
+of core JS module URLs (`/_assets/<md5>/JavaScript/*.js`) that aren't `href`/`src`
+attributes; hashing them (prioritising the depth-1 files the DB knows, capped)
+narrows the patch band far better than the handful of FE-linked assets. Core
+discriminators are probed **ranked by how much each narrows the version** (most
+hash-buckets first), not alphabetically.
 
 TYPO3's served static files are **byte-identical within a release** and change
 between releases — frequently **per patch**. Hash what the target serves, look

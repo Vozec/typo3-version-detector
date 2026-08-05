@@ -81,6 +81,10 @@ type VersionResult struct {
 	// Findings holds security-relevant pre-auth observations (exposed install
 	// tool, debug mode, XML sitemap, host-header disclosure, …).
 	Findings []Finding `json:"findings,omitempty"`
+
+	// conflict is set when two probes' version sets were disjoint (contradictory
+	// evidence) — caps confidence so a post-conflict singleton isn't "high".
+	conflict bool `json:"-"`
 	// Vulnerabilities lists published core advisories affecting the detected
 	// version. Maybe holds advisories affecting only some candidates when the
 	// version is a range (uncertain until the version is pinned).
@@ -124,7 +128,19 @@ func (f *Fingerprinter) Detect(ctx context.Context, rawURL string) (*VersionResu
 			inter, interSet = s, true
 			return
 		}
-		inter = intersectKeep(inter, s)
+		merged := map[string]bool{}
+		for v := range inter {
+			if s[v] {
+				merged[v] = true
+			}
+		}
+		if len(merged) == 0 {
+			// Disjoint evidence — keep the accumulated set but flag the conflict
+			// so a resulting singleton can't be reported as high confidence.
+			res.conflict = true
+			return
+		}
+		inter = merged
 	}
 
 	// Legacy path-probing hits typo3/sysext/** directly — pointless in composer
@@ -614,8 +630,15 @@ func (f *Fingerprinter) summarize(res *VersionResult, exact string) {
 	case 1:
 		res.Version = res.Candidates[0]
 		res.Range = res.Candidates[0]
-		res.Confidence = "high"
 		res.Method = "asset hash (unique match)"
+		if res.conflict {
+			// Some probe's version set was disjoint from the rest — the lone
+			// survivor is not trustworthy as an exact answer.
+			res.Confidence = "low"
+			res.Notes = append(res.Notes, "contradictory asset evidence (disjoint version sets) — the single candidate may be a custom/overridden asset; treat as approximate")
+		} else {
+			res.Confidence = "high"
+		}
 	default:
 		lo, hi := res.Candidates[0], res.Candidates[len(res.Candidates)-1]
 		res.Range = lo + " – " + hi

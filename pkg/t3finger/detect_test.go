@@ -119,12 +119,3 @@ func TestAbsenceNarrowingLegacy(t *testing.T) {
 		t.Errorf("candidates = %q, want 12.4.1,12.4.2 (absence should drop 12.4.3)", got)
 	}
 }
-
-func hasMarker(markers []string, sub string) bool {
-	for _, m := range markers {
-		if strings.Contains(m, sub) {
-			return true
-		}
-	}
-	return false
-}

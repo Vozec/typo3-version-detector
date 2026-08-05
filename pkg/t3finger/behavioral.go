@@ -1,6 +1,9 @@
 package t3finger
 
-import "context"
+import (
+	"context"
+	"strings"
+)
 
 // probeBehavioral issues a few cheap behavioral requests that confirm TYPO3 and
 // bound the major version independently of asset hashes — so it works on
@@ -48,6 +51,14 @@ func (f *Fingerprinter) probeBehavioral(ctx context.Context, base string, res *V
 		floor = "13.0.0" // confirmed TYPO3 but the ≤12 eID is gone ⇒ ≥ 13
 		res.Markers = appendUniq(res.Markers, "eID requirejs absent (≥ 13)")
 	}
+	// The backend ES-module importmap (rendered on /typo3/) exists only in 12+
+	// (11 uses RequireJS). Combined with the requirejs ceiling this pins the
+	// major exactly: importmap + requirejs ⇒ 12.x; no importmap + requirejs ⇒ 11.x.
+	if hasMarker(res.Markers, "backend importmap") {
+		if floor == "" || CompareVersions("12.0.0", floor) > 0 {
+			floor = "12.0.0"
+		}
+	}
 
 	if floor != "" || ceil != "" {
 		before := len(res.Candidates)
@@ -85,4 +96,14 @@ func appendUniq(s []string, v string) []string {
 		}
 	}
 	return append(s, v)
+}
+
+// hasMarker reports whether any marker contains sub.
+func hasMarker(markers []string, sub string) bool {
+	for _, m := range markers {
+		if strings.Contains(m, sub) {
+			return true
+		}
+	}
+	return false
 }

@@ -45,6 +45,10 @@ CVEs - all driven by fingerprint databases built from the **official releases (m
   `/_assets/<md5>/` path; legacy via `/typo3conf/ext/`, with **auto-selected marker files**
   (`ext_emconf.php` → `ext_localconf.php` → `ext_tables.php` → `composer.json`) so a host
   blocking one type is enumerated through another.
+- **Behavioural + recon signals** - eID handlers (`dumpFile`/`tx_cms_showpic`) confirm TYPO3
+  and bracket the major even on hardened/stripped sites; the backend importmap tightens the
+  composer-mode band; and it flags exposed **Install Tool**, **debug/exception** pages, an
+  **XML sitemap** (page-tree enumeration) and trusted-host disclosure.
 - **CVE mapping** - core and extension versions matched against the official TYPO3 security
   advisory feed; certain hits on a pinned version, "possible" hits on a range.
 - **Robust & honest** - a soft-404 / catch-all guard means a 200-everything host never

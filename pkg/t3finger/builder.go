@@ -251,7 +251,14 @@ func hashable(name string) bool {
 	if HashFull {
 		return true
 	}
-	// Depth-limit: at most one directory level under Resources/Public/, so
+	// backend and core are the sysexts whose /_assets/<md5>/ prefix a composer
+	// scan can actually reach (their assets are on the login page), so their
+	// FULL depth is worth hashing — the deep files (form-engine/**, code-editor,
+	// dompurify, …) change per-patch and split bands the shallow files can't.
+	if strings.HasPrefix(name, "typo3/sysext/backend/") || strings.HasPrefix(name, "typo3/sysext/core/") {
+		return true
+	}
+	// Everything else: at most one directory level under Resources/Public/, so
 	// Css/backend.css and JavaScript/modal.js qualify but the deep
 	// Contrib/@ckeditor/** and translation trees (which balloon the DB) do not.
 	rest := name[i+len(marker):]

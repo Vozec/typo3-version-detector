@@ -48,6 +48,8 @@ func main() {
 		runBuildReleases(os.Args[2:])
 	case "rebuild-database", "rebuilddb":
 		runRebuildDatabase(os.Args[2:])
+	case "update-database", "updatedb":
+		runUpdateDatabase(os.Args[2:])
 	case "-h", "--help", "help":
 		usage()
 	default:

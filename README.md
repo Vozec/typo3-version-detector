@@ -193,21 +193,29 @@ Granular calls are exported too: `Detect`, `DetectMode`, `EnumerateExtensions`,
 
 Everything embedded is regenerable from upstream; rebuild the binary afterwards to re-embed:
 
-```bash
-make db            # core version DB (get.typo3.org releases)
-make extdb-full    # complete extension DB (every plugin+theme, all versions, hashes+deps)
-make advisories    # CVE advisory set
-make releases      # latest-stable-per-branch snapshot (up-to-date check)
-make data          # all of the above, then rebuild the binary
+**Two paths — build once, update cheaply.** The extension DB is kept as a **raw
+working DB** (`extension-db.raw.json.gz`, every hashed file per version) plus the compact
+**embedded DB** (`extension-db.json.gz`, pruned to version-discriminating files). The raw DB
+is the source of truth that makes updates *download-minimal*.
 
-# or, in one command (no make): rebuild every dataset in place, then `go build`
-t3scan rebuild-database          # add -skip-extdb for a fast refresh, -extdb-only for just plugins
+```bash
+# One-time FULL build of everything (heavy: streams every TER package)
+t3scan rebuild-database          # or: make rebuild-database
+
+# Cheap, repeatable refresh — new CVEs, new releases, and ONLY new extension
+# versions / new plugins since last time (unchanged plugins = zero downloads)
+t3scan update-database           # or: make update-database
+
+# then re-embed into the binary:
+go build -o t3scan ./cmd/t3scan
 ```
 
-Under the hood: `t3scan builddb`, `t3scan buildextdb -all` (resumable with `-merge`,
-lighter with `-maxversions N`), `t3scan buildadvisories`, `t3scan buildreleases`. Nothing is
-written to disk during a build - archives are streamed and hashed in memory; ELTS releases are
-gated and skipped.
+Individual datasets: `make db` (core versions), `make extdb-full` / `make extdb-update`
+(extensions), `make advisories` (CVEs), `make releases` (latest-per-branch). Under the hood:
+`t3scan builddb`, `t3scan buildextdb -all [-update]`, `t3scan buildadvisories`,
+`t3scan buildreleases`. Archives are streamed and hashed in memory; ELTS releases are gated
+and skipped. **New CVEs need no extension rebuild** — they live in the advisory DB, matched at
+scan time.
 
 ## 🛡️ Nuclei template
 

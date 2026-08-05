@@ -5,6 +5,7 @@ BIN     := t3scan
 PKG     := ./cmd/t3scan
 DB      := pkg/t3finger/db.json
 EXTDB   := pkg/t3finger/data/extension-db.json.gz
+EXTRAW  := pkg/t3finger/data/extension-db.raw.json.gz
 WL      := pkg/t3finger/data/extensions.txt
 PREFIX  ?= /usr/local
 GOFLAGS ?=
@@ -79,15 +80,17 @@ extdb:
 	go run $(PKG) buildextdb -o $(EXTDB)
 
 ## extdb-full: (re)build the COMPLETE extension DB — every TER plugin+theme,
-##             all versions, static-file hashes + dependencies (~1h, heavy)
+##             all versions, static-file hashes + dependencies (~1h, heavy).
+##             Writes the raw (unpruned) working DB + the pruned embed DB.
 .PHONY: extdb-full
 extdb-full:
-	go run $(PKG) buildextdb -all -c $(EXTC) -o $(EXTDB)
+	go run $(PKG) buildextdb -all -c $(EXTC) -raw $(EXTRAW) -o $(EXTDB)
 
-## extdb-update: resume/extend the existing extension DB (merge new data in)
+## extdb-update: incremental — fetch ONLY new versions / new plugins from the
+##               raw working DB (cheap; unchanged plugins cost zero downloads)
 .PHONY: extdb-update
 extdb-update:
-	go run $(PKG) buildextdb -all -c $(EXTC) -merge -o $(EXTDB)
+	go run $(PKG) buildextdb -all -update -c $(EXTC) -raw $(EXTRAW) -o $(EXTDB)
 
 ## db-rebuild: rebuild the version DB then re-embed it into the binary
 .PHONY: db-rebuild
@@ -98,10 +101,16 @@ db-rebuild: db build
 data: wordlist advisories releases db extdb-full build
 	@echo "all datasets rebuilt and embedded"
 
-## rebuild-database: refresh every dataset in one command (= data, minus build)
+## rebuild-database: FULL rebuild of every dataset in one command (heavy)
 .PHONY: rebuild-database
 rebuild-database:
 	go run $(PKG) rebuild-database
+
+## update-database: cheap refresh — new CVEs, new releases, and only the new
+##                  extension versions / new plugins since the last build
+.PHONY: update-database
+update-database:
+	go run $(PKG) update-database
 
 # ---- convenience ----
 

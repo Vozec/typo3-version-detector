@@ -134,6 +134,7 @@ func (b *ExtBuilder) BuildExtProbeDB(ctx context.Context, keys []string, stamp s
 	db := &ExtProbeDB{BuiltAt: stamp, Extensions: map[string]ExtEntry{}}
 	for i, e := range results {
 		if e != nil {
+			pruneEntry(e) // this entry-point yields a compact (embeddable) DB
 			db.Extensions[names[i]] = *e
 		}
 	}
@@ -177,7 +178,9 @@ func (b *ExtBuilder) buildOne(ctx context.Context, key string, versions []string
 	}
 	sort.Sort(byVersion(e.Versions))
 	e.Probes = selectProbeFiles(latestNames)
-	b.prune(e)
+	// NOTE: buildOne returns an UNPRUNED entry (every hashed public file). The
+	// caller decides: BuildExtProbeDB prunes for a compact embed DB; the raw
+	// working DB keeps everything so incremental updates stay correct.
 	return e, downloads
 }
 
@@ -232,9 +235,10 @@ func (b *ExtBuilder) hashVersion(ctx context.Context, key, version string) (name
 	return names, composer, requires, hashes, true
 }
 
-// prune drops file paths whose content is identical across every covered version
-// (no version signal), keeping the DB compact. Probe files are kept regardless.
-func (b *ExtBuilder) prune(e *ExtEntry) {
+// pruneEntry drops file paths whose content is identical across every covered
+// version (no version signal), keeping the embedded DB compact. Probe files are
+// kept regardless. Operates in place; call on a clone to preserve the raw entry.
+func pruneEntry(e *ExtEntry) {
 	total := len(e.Versions)
 	keep := map[string]bool{}
 	for _, p := range e.Probes {

@@ -138,6 +138,49 @@ func TestFreshness(t *testing.T) {
 	}
 }
 
+func TestComposerNameCollisionDeterministic(t *testing.T) {
+	// Two keys claim the same composer name (a real one + a dummy). The index
+	// must deterministically pick the one with more versions, every time.
+	db := &ExtProbeDB{Extensions: map[string]ExtEntry{
+		"news":        {Composer: "georgringer/news", Versions: []string{"11.0.0", "12.0.0", "14.0.3"}, Latest: "14.0.3"},
+		"local_dummy": {Composer: "georgringer/news", Versions: []string{"10.10.10"}, Latest: "10.10.10"},
+	}}
+	for i := 0; i < 20; i++ {
+		fresh := &ExtProbeDB{Extensions: db.Extensions}
+		if k := fresh.KeyForComposer("georgringer/news"); k != "news" {
+			t.Fatalf("collision resolved to %q, want news", k)
+		}
+		key, _, ok := fresh.IdentifyAssetHash("f6ef6adaf5c92bf687a31a3adbcb0f7b") // md5("/vendor/georgringer/news/")
+		if !ok || key != "news" {
+			t.Fatalf("asset hash resolved to %q (ok=%v), want news", key, ok)
+		}
+	}
+}
+
+func TestParseComposerLock(t *testing.T) {
+	body := []byte(`{"packages":[
+		{"name":"typo3/cms-core","version":"v12.4.8","type":"typo3-cms-framework"},
+		{"name":"georgringer/news","version":"v11.3.2","type":"typo3-cms-extension"},
+		{"name":"symfony/console","version":"v6.0.0","type":"library"}
+	]}`)
+	got := parseComposerLock(body)
+	if len(got) != 1 || got[0].name != "georgringer/news" || got[0].version != "11.3.2" {
+		t.Fatalf("parseComposerLock = %+v; want single news 11.3.2 (core + library excluded)", got)
+	}
+}
+
+func TestParsePackageStates(t *testing.T) {
+	body := []byte(`<?php return [ 'packages' => [
+		'core' => [ 'packagePath' => 'typo3/sysext/core/' ],
+		'news' => [ 'packagePath' => 'typo3conf/ext/news/' ],
+		'powermail' => array( 'packagePath' => 'typo3conf/ext/powermail/' ),
+	]];`)
+	got := parsePackageStates(body)
+	if len(got) != 2 || got[0] != "news" || got[1] != "powermail" {
+		t.Fatalf("parsePackageStates = %v; want [news powermail] (core sysext skipped)", got)
+	}
+}
+
 func TestWithProxy(t *testing.T) {
 	if _, err := New(WithProxy("http://127.0.0.1:8080")); err != nil {
 		t.Errorf("valid proxy rejected: %v", err)

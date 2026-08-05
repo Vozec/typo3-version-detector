@@ -31,6 +31,8 @@ func runExtensions(args []string) {
 	output := fs.String("o", "", "write results as JSON to this file")
 	all := fs.Bool("all", false, "list unconfirmed hits too (default hides stale-symlink-only)")
 	cve := fs.Bool("cve", false, "look up known CVEs for found extensions (legacy mode; queries Packagist)")
+	passiveOnly := fs.Bool("passive", false, "passive discovery ONLY — HTML /_assets md5 reversal, composer.lock, PackageStates.php; no brute force")
+	noPassive := fs.Bool("no-passive", false, "skip the passive pre-pass; brute force only")
 	fs.Usage = func() {
 		fmt.Fprintf(os.Stderr, "Enumerate TYPO3 extensions installed on a site.\n\nUsage:\n  t3scan extensions [flags] <url>\n\nModes:\n  composer  probe /_assets/<md5(\"/vendor/<pkg>/\")>/  (TYPO3 >= 11 composer installs)\n  legacy    probe /typo3conf/ext/<key>/ and /typo3/sysext/<key>/  (+ reads versions)\n  auto      detect the install mode first, then pick (default)\n\nFlags:\n")
 		fs.PrintDefaults()
@@ -105,12 +107,14 @@ func runExtensions(args []string) {
 	if !*asJSON {
 		fmt.Fprintf(stdout, "%s %s\n", cCyan("▸"), cBold(target))
 		kv("mode", chosen)
-		kv("candidates", fmt.Sprintf("%d  %s", len(packages), cDim("("+src+")")))
-		thr := "unlimited"
-		if *rate > 0 {
-			thr = fmt.Sprintf("%g req/s", *rate)
+		if !*passiveOnly { // brute-force framing is meaningless in passive-only mode
+			kv("candidates", fmt.Sprintf("%d  %s", len(packages), cDim("("+src+")")))
+			thr := "unlimited"
+			if *rate > 0 {
+				thr = fmt.Sprintf("%g req/s", *rate)
+			}
+			kv("throttle", fmt.Sprintf("%d workers, %s", *conc, thr))
 		}
-		kv("throttle", fmt.Sprintf("%d workers, %s", *conc, thr))
 	}
 
 	var lastPct int64 = -1
@@ -125,17 +129,37 @@ func runExtensions(args []string) {
 		}
 	}
 
+	// Passive pre-pass (free, no brute force): reverse /_assets/<md5>/ in the
+	// HTML against the catalogue, read composer.lock / PackageStates.php.
+	var passive *t3finger.ExtResult
+	if !*noPassive {
+		if passive, err = f.PassiveExtensions(ctx, target); err != nil {
+			passive = nil
+		} else if passive != nil && !*asJSON {
+			kv("passive", fmt.Sprintf("%d found without brute force %s",
+				len(passive.Extensions), cDim("(HTML assets, composer.lock, PackageStates)")))
+		}
+	}
+
 	var res *t3finger.ExtResult
-	if chosen == "legacy" {
-		res, err = f.EnumerateExtensionsLegacy(ctx, target, packages, progress)
+	if *passiveOnly {
+		res = passive
+		if res == nil {
+			res = &t3finger.ExtResult{Target: target}
+		}
 	} else {
-		res, err = f.EnumerateExtensions(ctx, target, packages, progress)
-	}
-	if stderrIsTTY() && !*asJSON {
-		fmt.Fprint(os.Stderr, "\r\033[K")
-	}
-	if err != nil {
-		fatal(err)
+		if chosen == "legacy" {
+			res, err = f.EnumerateExtensionsLegacy(ctx, target, packages, progress)
+		} else {
+			res, err = f.EnumerateExtensions(ctx, target, packages, progress)
+		}
+		if stderrIsTTY() && !*asJSON {
+			fmt.Fprint(os.Stderr, "\r\033[K")
+		}
+		if err != nil {
+			fatal(err)
+		}
+		res = mergeExtResults(res, passive) // fold passive hits in (dedup)
 	}
 
 	if *cve && res != nil {
@@ -183,8 +207,10 @@ func runExtensions(args []string) {
 }
 
 func printExtensions(res *t3finger.ExtResult, all bool) {
-	fmt.Fprintf(stdout, "  %s  HTTP %d, %d bytes = not installed\n",
-		cDim("baseline"), res.Baseline.Status, res.Baseline.Size)
+	if res.Baseline.OK { // only meaningful when a brute-force pass calibrated it
+		fmt.Fprintf(stdout, "  %s  HTTP %d, %d bytes = not installed\n",
+			cDim("baseline"), res.Baseline.Status, res.Baseline.Size)
+	}
 	if res.NotEnumerable {
 		fmt.Fprintf(stdout, "  %s\n", cYellow("⚠ "+firstNote(res.Notes)))
 	}
@@ -314,6 +340,53 @@ func printExtensions(res *t3finger.ExtResult, all bool) {
 		fmt.Fprintf(stdout, ", %s %d errors", cRed("✗"), res.Errors)
 	}
 	fmt.Fprintln(stdout)
+}
+
+// mergeExtResults folds passively-discovered extensions into the brute-force
+// result, de-duplicating by composer name (or key). A passive hit fills in a
+// version/evidence the brute-force pass lacked, and passive-only finds (e.g.
+// when the host blocks enumeration entirely) are appended.
+func mergeExtResults(primary, extra *t3finger.ExtResult) *t3finger.ExtResult {
+	if extra == nil {
+		return primary
+	}
+	if primary == nil {
+		return extra
+	}
+	key := func(e t3finger.Extension) string {
+		if e.ComposerName != "" {
+			return "c:" + e.ComposerName
+		}
+		return "k:" + e.Package
+	}
+	idx := map[string]int{}
+	for i := range primary.Extensions {
+		idx[key(primary.Extensions[i])] = i
+	}
+	for _, e := range extra.Extensions {
+		if i, ok := idx[key(e)]; ok {
+			p := &primary.Extensions[i]
+			p.Confirmed = p.Confirmed || e.Confirmed
+			if p.Version == "" && e.Version != "" {
+				p.Version, p.VersionSource, p.VersionExact, p.VersionCandidates = e.Version, e.VersionSource, e.VersionExact, e.VersionCandidates
+			}
+			if p.Evidence == "" {
+				p.Evidence = e.Evidence
+			}
+			if p.Latest == "" && e.Latest != "" {
+				p.Latest, p.LatestSource, p.Outdated = e.Latest, e.LatestSource, e.Outdated
+			}
+		} else {
+			primary.Extensions = append(primary.Extensions, e)
+			idx[key(e)] = len(primary.Extensions) - 1
+		}
+	}
+	// If enumeration was impossible but passive still found plugins, it's no
+	// longer a dead end — drop the misleading not-enumerable flag.
+	if primary.NotEnumerable && len(primary.Extensions) > 0 {
+		primary.NotEnumerable = false
+	}
+	return primary
 }
 
 // parseSelectorArg turns a -e value into a selector list: if it names an

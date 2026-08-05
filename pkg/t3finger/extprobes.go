@@ -3,7 +3,9 @@ package t3finger
 import (
 	"bytes"
 	"compress/gzip"
+	"crypto/md5"
 	_ "embed"
+	"encoding/hex"
 	"encoding/json"
 	"io"
 	"os"
@@ -44,19 +46,49 @@ type ExtProbeDB struct {
 	Extensions map[string]ExtEntry `json:"extensions"`
 
 	composerIdx map[string]string `json:"-"` // composer name -> key
+	assetIdx    map[string]string `json:"-"` // md5("/vendor/<composer>/") -> key
+}
+
+// ensureIndexes builds the composer-name and asset-hash reverse indexes once,
+// DETERMINISTICALLY. The TER catalogue contains junk/fork extensions that
+// declare another package's composer name (e.g. a "local_dummy" claiming
+// "georgringer/news"), so a naive last-writer-wins map is non-deterministic and
+// can resolve a real package to the impostor. On a collision we keep the entry
+// with the most versions (the real, maintained one); ties break to the
+// lexicographically smallest key.
+func (d *ExtProbeDB) ensureIndexes() {
+	if d.composerIdx != nil {
+		return
+	}
+	keys := make([]string, 0, len(d.Extensions))
+	for k := range d.Extensions {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	comp := make(map[string]string, len(keys))
+	best := make(map[string]int, len(keys))
+	for _, k := range keys {
+		e := d.Extensions[k]
+		if e.Composer == "" {
+			continue
+		}
+		if _, ok := comp[e.Composer]; !ok || len(e.Versions) > best[e.Composer] {
+			comp[e.Composer] = k
+			best[e.Composer] = len(e.Versions)
+		}
+	}
+	asset := make(map[string]string, len(comp))
+	for composer, key := range comp {
+		sum := md5.Sum([]byte("/vendor/" + composer + "/"))
+		asset[hex.EncodeToString(sum[:])] = key
+	}
+	d.composerIdx, d.assetIdx = comp, asset
 }
 
 // ByComposer returns the entry for a Packagist name (vendor/pkg), or nil. Used
 // to version-fingerprint a composer-mode extension whose key we don't have.
 func (d *ExtProbeDB) ByComposer(name string) *ExtEntry {
-	if d.composerIdx == nil {
-		d.composerIdx = map[string]string{}
-		for key, e := range d.Extensions {
-			if e.Composer != "" {
-				d.composerIdx[e.Composer] = key
-			}
-		}
-	}
+	d.ensureIndexes()
 	if key, ok := d.composerIdx[name]; ok {
 		e := d.Extensions[key]
 		return &e
@@ -64,9 +96,22 @@ func (d *ExtProbeDB) ByComposer(name string) *ExtEntry {
 	return nil
 }
 
+// IdentifyAssetHash reverses a composer-mode /_assets/<md5>/ directory hash back
+// to the installed extension it belongs to, using a precomputed table of
+// md5("/vendor/<composer>/") over the whole catalogue. This turns a hash already
+// present in the target's HTML into a certain, zero-extra-request identification
+// (the site is literally serving that package's asset). ok=false if unknown.
+func (d *ExtProbeDB) IdentifyAssetHash(md5hex string) (key, composer string, ok bool) {
+	d.ensureIndexes()
+	if k, found := d.assetIdx[md5hex]; found {
+		return k, d.Extensions[k].Composer, true
+	}
+	return "", "", false
+}
+
 // KeyForComposer returns the TER extension key for a Packagist name, or "".
 func (d *ExtProbeDB) KeyForComposer(name string) string {
-	d.ByComposer(name) // ensure composerIdx is built
+	d.ensureIndexes()
 	return d.composerIdx[name]
 }
 

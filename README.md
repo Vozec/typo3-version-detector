@@ -44,6 +44,12 @@ CVEs - all driven by fingerprint databases built from the **official releases (m
 - **Per-extension up-to-date check** - each plugin's **newest release** is recorded in the DB
   (or fetched live with `--live-versions`), so the table flags any extension running behind
   (`⇡ 14.0.3`). Scan just one extension or a list with `-e news,solr` / `-e list.txt`.
+- **Passive discovery first, brute force last** - before probing anything, it reverses the
+  `/_assets/<md5>/` URLs already in the page HTML against the full catalogue (a hit = the site
+  is serving that package's own asset, so it's certain and free), reads the extension keys out
+  of legacy `typo3conf/ext/<key>/` paths, and parses an exposed `composer.lock` (whole
+  inventory + exact versions) or `PackageStates.php`. Brute force is only needed afterwards for
+  backend-only extensions that expose no public asset. `-passive` skips brute force entirely.
 - **Composer + legacy enumeration** - Composer mode (TYPO3 ≥ 11.4) via the deterministic
   `/_assets/<md5>/` path; legacy via `/typo3conf/ext/`, with **auto-selected marker files**
   (`ext_emconf.php` → `ext_localconf.php` → `ext_tables.php` → `composer.json`) so a host
@@ -104,6 +110,7 @@ host. Existing files are never overwritten — a `-<n>` suffix is added.
 |------|-------------|
 | `-ext` | (on `scan`) also enumerate installed extensions |
 | `-e <names\|file>` | scan only these extension(s): `news,solr` or a file (one per line) |
+| `-passive` | passive discovery only (HTML `/_assets` md5 reversal, `composer.lock`, `PackageStates`) — no brute force |
 | `--live-versions` | fetch the newest release of TYPO3 / each found extension live (else DB snapshot) |
 | `-mode auto\|composer\|legacy` | extension enumeration mode (default `auto`) |
 | `-cve` | look up known CVEs for the target / found extensions |

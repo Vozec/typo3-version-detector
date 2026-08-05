@@ -44,6 +44,8 @@ func main() {
 		runBuildAdvisories(os.Args[2:])
 	case "buildextdb":
 		runBuildExtDB(os.Args[2:])
+	case "buildreleases":
+		runBuildReleases(os.Args[2:])
 	case "-h", "--help", "help":
 		usage()
 	default:

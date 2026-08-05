@@ -49,6 +49,9 @@ CVEs - all driven by fingerprint databases built from the **official releases (m
   and bracket the major even on hardened/stripped sites; the backend importmap tightens the
   composer-mode band; and it flags exposed **Install Tool**, **debug/exception** pages, an
   **XML sitemap** (page-tree enumeration) and trusted-host disclosure.
+- **Up-to-date check** - the detected version is compared against the latest stable release of
+  its branch (from the get.typo3.org feed): `(latest: 13.4.35 ⇡ OUTDATED)` or up-to-date, plus
+  the newest overall. Refresh with `t3scan buildreleases`.
 - **CVE mapping** - core and extension versions matched against the official TYPO3 security
   advisory feed; certain hits on a pinned version, "possible" hits on a range.
 - **Robust & honest** - a soft-404 / catch-all guard means a 200-everything host never

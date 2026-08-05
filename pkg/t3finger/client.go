@@ -27,6 +27,7 @@ type Fingerprinter struct {
 	DB         *DB
 	Advisories *AdvisoryDB
 	ExtProbes  *ExtProbeDB
+	Releases   *Releases
 	UserAgent  string
 	// Insecure skips TLS certificate verification when true.
 	Insecure bool
@@ -83,6 +84,7 @@ func New(opts ...Option) (*Fingerprinter, error) {
 	}
 	f.Advisories = LoadAdvisories()
 	f.ExtProbes = LoadExtProbeDB()
+	f.Releases = LoadReleases()
 	for _, o := range opts {
 		o(f)
 	}

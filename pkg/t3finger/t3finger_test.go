@@ -114,6 +114,30 @@ func TestDBMerge(t *testing.T) {
 	}
 }
 
+func TestFreshness(t *testing.T) {
+	rel := &Releases{Latest: "14.3.5", Branches: map[string]string{
+		"13.4": "13.4.35", "12.4": "12.4.48",
+	}}
+	if BranchOf("13.4.33") != "13.4" {
+		t.Fatalf("BranchOf = %q", BranchOf("13.4.33"))
+	}
+	if got := rel.LatestForBranch("13.4.33"); got != "13.4.35" {
+		t.Errorf("LatestForBranch(13.4.33) = %q, want 13.4.35", got)
+	}
+	// 13.4.33 < 13.4.35 → outdated in-branch
+	if CompareVersions("13.4.33", rel.LatestForBranch("13.4.33")) >= 0 {
+		t.Error("13.4.33 should be behind 13.4.35")
+	}
+	// 12.4.48 == latest → up to date
+	if CompareVersions("12.4.48", rel.LatestForBranch("12.4.48")) < 0 {
+		t.Error("12.4.48 should be up to date")
+	}
+	// unknown branch → no latest
+	if rel.LatestForBranch("9.5.0") != "" {
+		t.Error("unknown branch should have no latest")
+	}
+}
+
 func TestWithProxy(t *testing.T) {
 	if _, err := New(WithProxy("http://127.0.0.1:8080")); err != nil {
 		t.Errorf("valid proxy rejected: %v", err)

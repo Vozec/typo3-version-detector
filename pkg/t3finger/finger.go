@@ -76,6 +76,13 @@ type VersionResult struct {
 	Markers    []string    `json:"markers,omitempty"` // is-TYPO3 evidence
 	Files      []FileProbe `json:"files,omitempty"`
 	Notes      []string    `json:"notes,omitempty"`
+	// LatestInBranch is the newest stable release of the detected version's
+	// branch (e.g. 13.4.35 for a 13.4.x target); NewestOverall is the newest
+	// stable TYPO3 release overall. Outdated is set when the target is behind
+	// its branch's latest patch. Sourced from the get.typo3.org release feed.
+	LatestInBranch string `json:"latestInBranch,omitempty"`
+	NewestOverall  string `json:"newestOverall,omitempty"`
+	Outdated       bool   `json:"outdated,omitempty"`
 	// ExtensionsHint lists extension keys passively discovered in the served
 	// HTML (from typo3conf/ext/<key>/ asset URLs) — free, no enumeration needed.
 	ExtensionsHint []string `json:"extensionsHint,omitempty"`
@@ -243,8 +250,30 @@ func (f *Fingerprinter) Detect(ctx context.Context, rawURL string) (*VersionResu
 	f.probeRecon(ctx, base, res)
 
 	f.summarize(res, exact)
+	f.annotateFreshness(res)
 	f.assessVulnerabilities(res)
 	return res, nil
+}
+
+// annotateFreshness marks how far the detected version is behind the latest
+// stable release of its branch (and the newest overall).
+func (f *Fingerprinter) annotateFreshness(res *VersionResult) {
+	if f.Releases == nil {
+		return
+	}
+	res.NewestOverall = f.Releases.Latest
+	// The best (highest) version we detected — a band's top, or the pinned one.
+	top := res.Version
+	if top == "" && len(res.Candidates) > 0 {
+		top = res.Candidates[len(res.Candidates)-1]
+	}
+	if top == "" {
+		return
+	}
+	if latest := f.Releases.LatestForBranch(top); latest != "" {
+		res.LatestInBranch = latest
+		res.Outdated = CompareVersions(top, latest) < 0
+	}
 }
 
 // assessVulnerabilities maps the detected version (or candidate range) to

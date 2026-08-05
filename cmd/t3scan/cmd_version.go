@@ -187,7 +187,17 @@ func printVersion(r *t3finger.VersionResult, verbose, force bool) {
 	default:
 		head = cBold(head)
 	}
-	fmt.Fprintf(stdout, "\n  %s   %s\n\n", head, confidenceBadge(r.Confidence))
+	fmt.Fprintf(stdout, "\n  %s   %s%s\n\n", head, confidenceBadge(r.Confidence), freshnessTag(r))
+	if r.LatestInBranch != "" {
+		if r.Outdated {
+			kv("latest", cRed(r.LatestInBranch)+cDim(" (branch "+t3finger.BranchOf(r.LatestInBranch)+" — target is behind)"))
+		} else {
+			kv("latest", cGreen(r.LatestInBranch)+cDim(" (branch "+t3finger.BranchOf(r.LatestInBranch)+" — up to date)"))
+		}
+	}
+	if r.NewestOverall != "" && r.LatestInBranch != r.NewestOverall {
+		kv("newest overall", cDim(r.NewestOverall))
+	}
 	if r.Mode != "" && r.Mode != "unknown" {
 		kv("install mode", string(r.Mode))
 	}
@@ -369,6 +379,18 @@ func plural(n int, one, many string) string {
 	return many
 }
 
+// freshnessTag renders a compact "(latest: X)" / "(outdated)" tag next to the
+// version headline.
+func freshnessTag(r *t3finger.VersionResult) string {
+	if r.LatestInBranch == "" {
+		return ""
+	}
+	if r.Outdated {
+		return "   " + cRed(cBold("⇡ OUTDATED")) + cDim(" (latest "+t3finger.BranchOf(r.LatestInBranch)+": "+r.LatestInBranch+")")
+	}
+	return "   " + cDim("(latest: "+r.LatestInBranch+" — up to date)")
+}
+
 func confidenceBadge(conf string) string {
 	switch conf {
 	case "high":
@@ -381,7 +403,7 @@ func confidenceBadge(conf string) string {
 }
 
 func renderVersionTable(results []*t3finger.VersionResult) {
-	headers := []string{"TARGET", "TYPO3", "CONF", "MODE", "VULNS", "METHOD"}
+	headers := []string{"TARGET", "TYPO3", "LATEST", "CONF", "MODE", "VULNS", "METHOD"}
 	rows := [][]string{}
 	for _, r := range results {
 		rows = append(rows, versionRow(r))
@@ -423,11 +445,19 @@ func versionRow(r *t3finger.VersionResult) []string {
 		target = target[:39] + "…"
 	}
 	if !r.IsTypo3 {
-		return []string{target, "not typo3", "-", "-", "-", "-"}
+		return []string{target, "not typo3", "-", "-", "-", "-", "-"}
 	}
 	ver := r.Range
 	if ver == "" {
 		ver = "unknown"
+	}
+	latest := "-"
+	if r.LatestInBranch != "" {
+		if r.Outdated {
+			latest = "⇡ " + r.LatestInBranch
+		} else {
+			latest = "✓"
+		}
 	}
 	mode := string(r.Mode)
 	if mode == "" || mode == "unknown" {
@@ -439,5 +469,5 @@ func versionRow(r *t3finger.VersionResult) []string {
 	} else if n := len(r.Maybe); n > 0 {
 		vulns = fmt.Sprintf("~%d", n)
 	}
-	return []string{target, ver, r.Confidence, mode, vulns, r.Method}
+	return []string{target, ver, latest, r.Confidence, mode, vulns, r.Method}
 }

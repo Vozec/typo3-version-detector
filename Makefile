@@ -68,6 +68,11 @@ wordlist:
 advisories:
 	go run $(PKG) buildadvisories
 
+## releases: refresh the latest-stable-per-branch snapshot (get.typo3.org)
+.PHONY: releases
+releases:
+	go run $(PKG) buildreleases
+
 ## extdb: (re)build the extension DB for the common seed list (fast, ~1 min)
 .PHONY: extdb
 extdb:
@@ -90,7 +95,7 @@ db-rebuild: db build
 
 ## data: refresh EVERY bundled dataset, then rebuild the binary to embed them
 .PHONY: data
-data: wordlist advisories db extdb-full build
+data: wordlist advisories releases db extdb-full build
 	@echo "all datasets rebuilt and embedded"
 
 # ---- convenience ----

@@ -30,9 +30,56 @@ type ExtBuilder struct {
 	HTTP        *http.Client
 }
 
-// NewExtBuilder returns an ExtBuilder with sane defaults.
+// NewExtBuilder returns an ExtBuilder with sane defaults. The HTTP client uses a
+// large idle-connection pool so high -c concurrency reuses keep-alive
+// connections instead of churning a new TCP+TLS handshake per download.
 func NewExtBuilder() *ExtBuilder {
-	return &ExtBuilder{Concurrency: 8, MaxVersions: 0, HTTP: &http.Client{Timeout: 120 * time.Second}}
+	tr := &http.Transport{
+		MaxIdleConns:        512,
+		MaxIdleConnsPerHost: 512,
+		IdleConnTimeout:     90 * time.Second,
+	}
+	return &ExtBuilder{Concurrency: 8, MaxVersions: 0, HTTP: &http.Client{Timeout: 120 * time.Second, Transport: tr}}
+}
+
+// fetch GETs a URL with retries on throttling (429) and transient 5xx/network
+// errors, so a high-concurrency build does not silently drop versions when TER
+// rate-limits. Returns the body and whether it ultimately succeeded (HTTP 200).
+func (b *ExtBuilder) fetch(ctx context.Context, url string, limit int64) ([]byte, bool) {
+	for attempt := 0; attempt < 5; attempt++ {
+		if attempt > 0 {
+			// linear-ish backoff: 0.5s, 1s, 1.5s, 2s
+			select {
+			case <-time.After(time.Duration(attempt) * 500 * time.Millisecond):
+			case <-ctx.Done():
+				return nil, false
+			}
+		}
+		req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+		if err != nil {
+			return nil, false
+		}
+		req.Header.Set("User-Agent", "t3scan-buildextdb/1.0")
+		resp, err := b.HTTP.Do(req)
+		if err != nil {
+			continue // network error → retry
+		}
+		if resp.StatusCode == 429 || resp.StatusCode >= 500 {
+			resp.Body.Close()
+			continue // throttled / transient → retry
+		}
+		if resp.StatusCode != 200 {
+			resp.Body.Close()
+			return nil, false // 404 etc. → definitive miss, no retry
+		}
+		body, err := io.ReadAll(io.LimitReader(resp.Body, limit))
+		resp.Body.Close()
+		if err != nil {
+			continue
+		}
+		return body, true
+	}
+	return nil, false
 }
 
 func (b *ExtBuilder) log(f string, a ...any) {
@@ -188,18 +235,8 @@ func (b *ExtBuilder) buildOne(ctx context.Context, key string, versions []string
 // name, requires, and path->md5 for web-servable static files.
 func (b *ExtBuilder) hashVersion(ctx context.Context, key, version string) (names []string, composer string, requires map[string]string, hashes map[string]string, ok bool) {
 	url := "https://extensions.typo3.org/extension/download/" + key + "/" + version + "/zip"
-	req, _ := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
-	req.Header.Set("User-Agent", "t3scan-buildextdb/1.0")
-	resp, err := b.HTTP.Do(req)
-	if err != nil {
-		return nil, "", nil, nil, false
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode != 200 {
-		return nil, "", nil, nil, false
-	}
-	raw, err := io.ReadAll(io.LimitReader(resp.Body, 96<<20))
-	if err != nil {
+	raw, ok := b.fetch(ctx, url, 96<<20)
+	if !ok {
 		return nil, "", nil, nil, false
 	}
 	zr, err := zip.NewReader(bytes.NewReader(raw), int64(len(raw)))

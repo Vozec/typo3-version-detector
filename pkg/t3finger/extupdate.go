@@ -29,9 +29,12 @@ type UpdateStats struct {
 // binary. New CVEs are orthogonal — they live in the advisory DB and are
 // refreshed with buildadvisories, not here.
 //
-// This is the single reusable entry point behind `buildextdb` and
-// `update-database`; the same code path does the one-time full build and every
-// incremental refresh thereafter.
+// Downloads run through a SINGLE global worker pool over every (extension,
+// version) pair, so Concurrency requests are always in flight regardless of how
+// the versions are distributed across extensions. This matters because each TER
+// zip is tiny but costs a full request round-trip: the build is latency-bound,
+// so flat global concurrency — not per-extension goroutines — is what makes it
+// fast and removes the long tail of version-heavy plugins.
 func (b *ExtBuilder) UpdateExtDB(ctx context.Context, existing *ExtProbeDB, keys []string, stamp string) (*ExtProbeDB, UpdateStats, error) {
 	b.log("resolving versions from TER…")
 	catalogue, err := b.allVersions(ctx)
@@ -46,142 +49,169 @@ func (b *ExtBuilder) UpdateExtDB(ctx context.Context, existing *ExtProbeDB, keys
 		}
 	}
 
-	const (
-		kindUnchanged = iota
-		kindNew
-		kindUpdated
-	)
-	type change struct {
+	// 1) Plan: for each key decide what (if anything) to download.
+	type plan struct {
 		key   string
-		entry *ExtEntry // nil for unchanged
-		dl    int
-		kind  int
+		have  *ExtEntry // cloned existing entry (nil for a new extension)
+		isNew bool
+		toGet []string // versions to fetch
 	}
-	results := make([]change, len(keys))
-
-	var (
-		wg   sync.WaitGroup
-		sem  = make(chan struct{}, b.effConc())
-		done int64
-	)
-	for i, key := range keys {
+	var plans []plan
+	var stats UpdateStats
+	for _, key := range keys {
 		cat := catalogue[key]
 		if len(cat) == 0 {
-			continue // key not in TER (or removed) — leave any existing entry as-is
+			continue // not in TER (or removed) — leave any existing entry as-is
 		}
 		wanted := reversedCap(cat, b.MaxVersions) // newest-first, depth-capped
 		var have *ExtEntry
+		isNew := true
 		if existing != nil {
 			if e, ok := existing.Extensions[key]; ok {
-				have = &e
+				hc := cloneEntry(e)
+				have, isNew = &hc, false
 			}
 		}
-		wg.Add(1)
-		sem <- struct{}{}
-		go func(i int, key string, wanted []string, have *ExtEntry) {
-			defer wg.Done()
-			defer func() { <-sem }()
-			var c change
-			c.key = key
-			switch {
-			case have == nil: // brand-new extension
-				e, n := b.buildOne(ctx, key, wanted)
-				c.entry, c.dl, c.kind = e, n, kindNew
-			default:
-				missing := missingVersions(wanted, have.Versions)
-				if len(missing) == 0 {
-					c.kind = kindUnchanged
-				} else {
-					e, n := b.mergeNewVersions(ctx, key, *have, missing)
-					c.entry, c.dl, c.kind = e, n, kindUpdated
-				}
-			}
-			results[i] = c
-			cur := atomic.AddInt64(&done, 1)
-			if cur%50 == 0 {
-				b.log("%d/%d extensions scanned", cur, len(keys))
-			}
-		}(i, key, wanted, have)
-	}
-	wg.Wait()
-
-	var stats UpdateStats
-	for _, c := range results {
-		if c.key == "" {
+		var toGet []string
+		if isNew {
+			toGet = wanted
+		} else {
+			toGet = missingVersions(wanted, have.Versions)
+		}
+		if !isNew && len(toGet) == 0 {
+			stats.Unchanged++
 			continue
 		}
-		stats.Downloads += c.dl
-		switch c.kind {
-		case kindNew:
-			if c.entry != nil && len(c.entry.Probes) > 0 {
-				out.Extensions[c.key] = *c.entry
-				stats.NewExtensions++
-			}
-		case kindUpdated:
-			if c.entry != nil {
-				out.Extensions[c.key] = *c.entry
-				stats.Updated++
-			}
-		case kindUnchanged:
-			stats.Unchanged++
+		plans = append(plans, plan{key: key, have: have, isNew: isNew, toGet: toGet})
+	}
+
+	// 2) Flatten to a single task list of (plan, version) downloads.
+	type task struct {
+		pi int
+		v  string
+	}
+	var tasks []task
+	for pi := range plans {
+		for _, v := range plans[pi].toGet {
+			tasks = append(tasks, task{pi, v})
 		}
 	}
+
+	// 3) Global worker pool: download + hash every task concurrently.
+	type vres struct {
+		names    []string
+		composer string
+		requires map[string]string
+		hashes   map[string]string
+		ok       bool
+	}
+	res := make([]vres, len(tasks))
+	total := len(tasks)
+	b.log("downloading %d version zips across %d extensions (%d workers)…", total, len(plans), b.effConc())
+
+	var (
+		wg   sync.WaitGroup
+		idx  = make(chan int)
+		done int64
+	)
+	for w := 0; w < b.effConc(); w++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for i := range idx {
+				t := tasks[i]
+				names, composer, requires, hashes, ok := b.hashVersion(ctx, plans[t.pi].key, t.v)
+				res[i] = vres{names, composer, requires, hashes, ok}
+				if n := atomic.AddInt64(&done, 1); n%500 == 0 {
+					b.log("%d/%d version-downloads", n, total)
+				}
+			}
+		}()
+	}
+	for i := range tasks {
+		idx <- i
+	}
+	close(idx)
+	wg.Wait()
+
+	// 4) Assemble each plan's entry from its version results.
+	byPlan := make([][]int, len(plans))
+	for i, t := range tasks {
+		byPlan[t.pi] = append(byPlan[t.pi], i)
+	}
+	for pi := range plans {
+		p := &plans[pi]
+		var e *ExtEntry
+		if p.isNew {
+			e = &ExtEntry{Files: map[string]map[string][]string{}}
+		} else {
+			e = p.have
+		}
+		newestV := ""
+		var newestNames []string
+		var newestComposer string
+		var newestReq map[string]string
+		dl := 0
+		for _, i := range byPlan[pi] {
+			r := res[i]
+			if !r.ok {
+				continue
+			}
+			dl++
+			v := tasks[i].v
+			e.Versions = append(e.Versions, v)
+			for path, sum := range r.hashes {
+				m := e.Files[path]
+				if m == nil {
+					m = map[string][]string{}
+					e.Files[path] = m
+				}
+				m[sum] = append(m[sum], v)
+			}
+			if newestV == "" || CompareVersions(v, newestV) > 0 {
+				newestV, newestNames, newestComposer, newestReq = v, r.names, r.composer, r.requires
+			}
+		}
+		stats.Downloads += dl
+		if len(e.Versions) == 0 {
+			continue
+		}
+		sort.Sort(byVersion(e.Versions))
+		e.Latest = e.Versions[len(e.Versions)-1]
+		for _, buckets := range e.Files {
+			for h := range buckets {
+				sort.Sort(byVersion(buckets[h]))
+			}
+		}
+		// The newest release defines identity. For a new extension that is always
+		// the newest downloaded; for an update, only refresh when the newest
+		// overall version is one we actually fetched this run.
+		if p.isNew || newestV == e.Latest {
+			if newestComposer != "" {
+				e.Composer = newestComposer
+			}
+			if newestReq != nil {
+				e.Requires = newestReq
+			}
+			if len(newestNames) > 0 {
+				e.Probes = selectProbeFiles(newestNames)
+			}
+		}
+		if p.isNew {
+			if len(e.Probes) > 0 {
+				out.Extensions[p.key] = *e
+				stats.NewExtensions++
+			}
+		} else {
+			out.Extensions[p.key] = *e
+			stats.Updated++
+		}
+	}
+
 	stats.Extensions = len(out.Extensions)
 	b.log("update: %d total, +%d new, %d updated, %d unchanged, %d downloads",
 		stats.Extensions, stats.NewExtensions, stats.Updated, stats.Unchanged, stats.Downloads)
 	return out, stats, nil
-}
-
-// mergeNewVersions downloads the given (missing) versions of an existing
-// extension and merges their hashes into a CLONE of `have`, refreshing the
-// identity (Latest/Composer/Requires/Probes) if a newer version was added.
-func (b *ExtBuilder) mergeNewVersions(ctx context.Context, key string, have ExtEntry, missing []string) (*ExtEntry, int) {
-	e := cloneEntry(have)
-	dl := 0
-	newestV := ""
-	var newestNames []string
-	var newestComposer string
-	var newestReq map[string]string
-	for _, v := range missing {
-		names, composer, requires, hashes, ok := b.hashVersion(ctx, key, v)
-		if !ok {
-			continue
-		}
-		dl++
-		e.Versions = append(e.Versions, v)
-		for path, sum := range hashes {
-			m := e.Files[path]
-			if m == nil {
-				m = map[string][]string{}
-				e.Files[path] = m
-			}
-			m[sum] = append(m[sum], v)
-		}
-		if newestV == "" || CompareVersions(v, newestV) > 0 {
-			newestV, newestNames, newestComposer, newestReq = v, names, composer, requires
-		}
-	}
-	sort.Sort(byVersion(e.Versions))
-	if n := len(e.Versions); n > 0 {
-		e.Latest = e.Versions[n-1]
-	}
-	// If the newest overall version is one we just downloaded, refresh identity
-	// (deps/composer/probes) from it — the newest release defines the record.
-	if newestV != "" && newestV == e.Latest {
-		if newestComposer != "" {
-			e.Composer = newestComposer
-		}
-		if newestReq != nil {
-			e.Requires = newestReq
-		}
-		e.Probes = selectProbeFiles(newestNames)
-	}
-	for _, buckets := range e.Files {
-		for h := range buckets {
-			sort.Sort(byVersion(buckets[h]))
-		}
-	}
-	return &e, dl
 }
 
 // PruneForEmbed returns a compact copy of a raw DB with version-invariant files

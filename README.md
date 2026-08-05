@@ -76,9 +76,19 @@ t3scan https://example.com                       # detect + core version + CVEs
 t3scan scan -ext https://example.com             # full scan: version + extensions + CVEs
 t3scan extensions -mode legacy -cve https://...  # extensions with exact versions + deps + CVEs
 t3scan -json https://example.com                 # machine-readable
+t3scan urls.txt -o out/                          # a file of targets -> one report per host in out/
+cat urls.txt | t3scan -json -o out/              # or stream targets on stdin
 t3scan -l scope.txt --fail-on-vuln               # scan a list, exit 2 if any CVE hits
+t3scan -f https://example.com                    # force: report even if markers don't confirm TYPO3
 t3scan -k -proxy socks5://127.0.0.1:9050 https://...   # skip TLS, route through Tor
 ```
+
+**Targets** can be given as URLs, as a **file** of URLs (`t3scan urls.txt`), or on
+**stdin** (`cat urls.txt | t3scan`) — flags may come before or after them.
+
+**Output** (`-o`): for a single target it's a file; for a list it's a directory
+(created if missing) with one normalized `<host><path>.txt` (or `.json`) per
+host. Existing files are never overwritten — a `-<n>` suffix is added.
 
 | Flag | Description |
 |------|-------------|
@@ -89,8 +99,9 @@ t3scan -k -proxy socks5://127.0.0.1:9050 https://...   # skip TLS, route through
 | `-rate <n>` | cap requests per second (`0` = unlimited) |
 | `-proxy <url>` | route through `http://`, `https://` or `socks5://` |
 | `-l <file>` | read targets from a file (`-` for stdin) |
+| `-o <path>` | output file (single target) or directory (list); `-<n>` suffix on collision |
+| `-f`, `--force` | report/enumerate even when classic markers don't confirm TYPO3 |
 | `-json` | machine-readable output |
-| `-o <file>` | write a JSON report |
 | `-v` | verbose (every probed asset, full evidence) |
 | `-k` | skip TLS certificate verification |
 | `--fail-on-vuln` | exit code `2` if a confirmed CVE is found (CI-friendly) |

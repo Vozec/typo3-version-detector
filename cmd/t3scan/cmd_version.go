@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"flag"
@@ -25,17 +26,20 @@ func runVersion(args []string) {
 	reqConc := fs.Int("t", 16, "concurrent requests per target (threads)")
 	rate := fs.Float64("rate", 0, "max requests per second per target (0 = unlimited)")
 	failOnVuln := fs.Bool("fail-on-vuln", false, "exit non-zero (2) if any confirmed vulnerability is found")
+	force := fs.Bool("f", false, "force: report/enumerate even when classic markers don't confirm TYPO3")
+	fs.BoolVar(force, "force", false, "alias for -f")
+	output := fs.String("o", "", "write output to a file (single target) or directory (list); created if missing")
 	timeout := fs.Duration("timeout", 30*time.Second, "per-target timeout")
 	fs.Usage = func() {
-		fmt.Fprintf(os.Stderr, "TYPO3 version detection\n\nUsage:\n  t3scan [flags] <url> [<url> ...]\n  t3scan -l urls.txt\n\nFlags:\n")
+		fmt.Fprintf(os.Stderr, "TYPO3 version detection\n\nUsage:\n  t3scan [flags] <url|file> [<url|file> ...]\n  cat urls.txt | t3scan [flags]\n  t3scan -l urls.txt -o out/\n\nFlags:\n")
 		fs.PrintDefaults()
 	}
-	_ = fs.Parse(args)
-	if *noColor || *asJSON {
+	positionals := parseFlags(fs, args)
+	if *noColor || *asJSON || *output != "" {
 		useColor = false
 	}
 
-	targets := gatherTargets(fs.Args(), *listFile)
+	targets := gatherTargets(positionals, *listFile)
 	if len(targets) == 0 {
 		fs.Usage()
 		os.Exit(2)
@@ -56,20 +60,44 @@ func runVersion(args []string) {
 
 	results := scanTargets(f, targets, *conc, *timeout)
 
-	switch {
-	case *asJSON:
-		enc := json.NewEncoder(os.Stdout)
-		enc.SetIndent("", "  ")
-		if len(results) == 1 {
-			enc.Encode(results[0])
-		} else {
-			enc.Encode(results)
+	if *output != "" {
+		// One file per target (or a single file for a single target).
+		sink, err := newSink(*output, len(targets) > 1, *asJSON)
+		if err != nil {
+			fatal(err)
 		}
-	case len(targets) > 1:
-		renderVersionTable(results)
-	default:
-		for _, r := range results {
-			printVersion(r, *verbose)
+		for i, r := range results {
+			content := renderCaptured(func() {
+				if *asJSON {
+					enc := json.NewEncoder(stdout)
+					enc.SetIndent("", "  ")
+					enc.Encode(r)
+				} else {
+					printVersion(r, *verbose, *force)
+				}
+			})
+			p, err := sink.write(targets[i], content)
+			if err != nil {
+				fatal(err)
+			}
+			fmt.Fprintf(os.Stderr, "%s %s\n", cDim("wrote"), p)
+		}
+	} else {
+		switch {
+		case *asJSON:
+			enc := json.NewEncoder(stdout)
+			enc.SetIndent("", "  ")
+			if len(results) == 1 {
+				enc.Encode(results[0])
+			} else {
+				enc.Encode(results)
+			}
+		case len(targets) > 1:
+			renderVersionTable(results)
+		default:
+			for _, r := range results {
+				printVersion(r, *verbose, *force)
+			}
 		}
 	}
 
@@ -80,6 +108,17 @@ func runVersion(args []string) {
 			}
 		}
 	}
+}
+
+// renderCaptured runs fn with stdout redirected to a buffer and returns the
+// bytes it produced (for writing a target's output to a file).
+func renderCaptured(fn func()) []byte {
+	var buf bytes.Buffer
+	old := stdout
+	stdout = &buf
+	fn()
+	stdout = old
+	return buf.Bytes()
 }
 
 func scanTargets(f *t3finger.Fingerprinter, targets []string, conc int, timeout time.Duration) []*t3finger.VersionResult {
@@ -120,16 +159,19 @@ func scanTargets(f *t3finger.Fingerprinter, targets []string, conc int, timeout 
 	return out
 }
 
-func printVersion(r *t3finger.VersionResult, verbose bool) {
-	fmt.Printf("\n%s\n", cDim(strings.Repeat("─", 60)))
-	fmt.Printf("%s %s\n", cCyan("▸"), cBold(r.Target))
+func printVersion(r *t3finger.VersionResult, verbose, force bool) {
+	fmt.Fprintf(stdout, "\n%s\n", cDim(strings.Repeat("─", 60)))
+	fmt.Fprintf(stdout, "%s %s\n", cCyan("▸"), cBold(r.Target))
 
-	if !r.IsTypo3 {
-		fmt.Printf("  %s\n", cRed("✗ not detected as TYPO3"))
+	if !r.IsTypo3 && !force {
+		fmt.Fprintf(stdout, "  %s\n", cRed("✗ not detected as TYPO3"))
 		for _, n := range r.Notes {
 			printNote(n)
 		}
 		return
+	}
+	if !r.IsTypo3 {
+		fmt.Fprintf(stdout, "  %s\n", cYellow("⚠ not confirmed TYPO3 by markers — forced (-f); showing best-effort findings"))
 	}
 
 	verdict := r.Range
@@ -145,7 +187,7 @@ func printVersion(r *t3finger.VersionResult, verbose bool) {
 	default:
 		head = cBold(head)
 	}
-	fmt.Printf("\n  %s   %s\n\n", head, confidenceBadge(r.Confidence))
+	fmt.Fprintf(stdout, "\n  %s   %s\n\n", head, confidenceBadge(r.Confidence))
 	if r.Mode != "" && r.Mode != "unknown" {
 		kv("install mode", string(r.Mode))
 	}
@@ -171,16 +213,16 @@ func printVersion(r *t3finger.VersionResult, verbose bool) {
 	}
 
 	if n := len(r.Vulnerabilities); n > 0 {
-		fmt.Printf("\n  %s   %s\n", cRed(cBold(fmt.Sprintf("⚠ %d known vulnerabilit%s", n, plural(n, "y", "ies")))),
+		fmt.Fprintf(stdout, "\n  %s   %s\n", cRed(cBold(fmt.Sprintf("⚠ %d known vulnerabilit%s", n, plural(n, "y", "ies")))),
 			cDim(severityBreakdown(r.Vulnerabilities)))
 		printAdvisories(r.Vulnerabilities, cRed("●"))
 	}
 	if n := len(r.Maybe); n > 0 {
-		fmt.Printf("\n  %s\n", cYellow(fmt.Sprintf("~ %d possible (version not pinned)", n)))
+		fmt.Fprintf(stdout, "\n  %s\n", cYellow(fmt.Sprintf("~ %d possible (version not pinned)", n)))
 		if verbose {
 			printAdvisories(r.Maybe, cYellow("○"))
 		} else {
-			fmt.Printf("   %s\n", cDim("(use -v to list; pin the version to confirm)"))
+			fmt.Fprintf(stdout, "   %s\n", cDim("(use -v to list; pin the version to confirm)"))
 		}
 	}
 
@@ -211,27 +253,27 @@ func printAssets(r *t3finger.VersionResult) {
 	}
 
 	if len(matched) > 0 {
-		fmt.Printf("\n  %s  %s\n", cBold("matched assets"), cDim("(these pinned the version)"))
+		fmt.Fprintf(stdout, "\n  %s  %s\n", cBold("matched assets"), cDim("(these pinned the version)"))
 		for _, fp := range matched {
 			how := "content"
 			if fp.ByPath {
 				how = "path"
 			}
 			vs := fmt.Sprintf("%s → %s", cDim(fp.MD5[:8]), verSpan(fp.Versions))
-			fmt.Printf("   %s %s\n      %s  %s\n",
+			fmt.Fprintf(stdout, "   %s %s\n      %s  %s\n",
 				cGreen("✓"), fp.Path, vs, cDim("("+how+", "+plural(len(fp.Versions), "1 version", fmt.Sprintf("%d versions", len(fp.Versions)))+")"))
 		}
 	}
 
 	if served > 0 {
-		fmt.Printf("\n  %s %s\n", cYellow(fmt.Sprintf("%d assets served but not in the DB.", served)),
+		fmt.Fprintf(stdout, "\n  %s %s\n", cYellow(fmt.Sprintf("%d assets served but not in the DB.", served)),
 			cDim("Why: their exact bytes aren't catalogued —"))
-		fmt.Printf("     %s\n", cDim("the target likely runs a build newer than the embedded DB, or (composer"))
-		fmt.Printf("     %s\n", cDim("mode) exposes legacy /typo3/sysext/ copies whose content isn't indexed."))
-		fmt.Printf("     %s\n", cDim("Run `t3scan builddb` to refresh, or use `-json` to see every hash."))
+		fmt.Fprintf(stdout, "     %s\n", cDim("the target likely runs a build newer than the embedded DB, or (composer"))
+		fmt.Fprintf(stdout, "     %s\n", cDim("mode) exposes legacy /typo3/sysext/ copies whose content isn't indexed."))
+		fmt.Fprintf(stdout, "     %s\n", cDim("Run `t3scan builddb` to refresh, or use `-json` to see every hash."))
 	}
 	if absent > 0 {
-		fmt.Printf("  %s\n", cDim(fmt.Sprintf("%d probed paths were absent (404).", absent)))
+		fmt.Fprintf(stdout, "  %s\n", cDim(fmt.Sprintf("%d probed paths were absent (404).", absent)))
 	}
 }
 
@@ -292,7 +334,7 @@ func printAdvisories(advs []t3finger.Advisory, bullet string) {
 		if a.Severity != "" {
 			sev = cDim(" [" + a.Severity + "]")
 		}
-		fmt.Printf("   %s %s%s  %s\n", bullet, cBold(fmt.Sprintf("%-*s", idw, id)), sev, a.Title)
+		fmt.Fprintf(stdout, "   %s %s%s  %s\n", bullet, cBold(fmt.Sprintf("%-*s", idw, id)), sev, a.Title)
 	}
 }
 
@@ -343,7 +385,7 @@ func renderVersionTable(results []*t3finger.VersionResult) {
 				b.WriteString("  ")
 			}
 		}
-		fmt.Println(b.String())
+		fmt.Fprintln(stdout, b.String())
 	}
 	printRow(headers, cBold)
 	for _, row := range rows {

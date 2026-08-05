@@ -33,15 +33,15 @@ func runExtensions(args []string) {
 		fmt.Fprintf(os.Stderr, "Enumerate TYPO3 extensions installed on a site.\n\nUsage:\n  t3scan extensions [flags] <url>\n\nModes:\n  composer  probe /_assets/<md5(\"/vendor/<pkg>/\")>/  (TYPO3 >= 11 composer installs)\n  legacy    probe /typo3conf/ext/<key>/ and /typo3/sysext/<key>/  (+ reads versions)\n  auto      detect the install mode first, then pick (default)\n\nFlags:\n")
 		fs.PrintDefaults()
 	}
-	_ = fs.Parse(args)
-	if *noColor || *asJSON {
+	positionals := parseFlags(fs, args)
+	if *noColor || *asJSON || *output != "" {
 		useColor = false
 	}
-	if fs.NArg() == 0 {
+	if len(positionals) == 0 {
 		fs.Usage()
 		os.Exit(2)
 	}
-	target := fs.Arg(0)
+	target := positionals[0]
 
 	f, err := t3finger.New(
 		t3finger.WithInsecure(*insecure),
@@ -92,7 +92,7 @@ func runExtensions(args []string) {
 	}
 
 	if !*asJSON {
-		fmt.Printf("%s %s\n", cCyan("▸"), cBold(target))
+		fmt.Fprintf(stdout, "%s %s\n", cCyan("▸"), cBold(target))
 		kv("mode", chosen)
 		kv("candidates", fmt.Sprintf("%d  %s", len(packages), cDim("("+src+")")))
 		thr := "unlimited"
@@ -133,36 +133,43 @@ func runExtensions(args []string) {
 		}
 	}
 
-	if *output != "" {
-		data, _ := json.MarshalIndent(res, "", "  ")
-		if err := os.WriteFile(*output, data, 0o644); err != nil {
-			fatal(err)
+	render := func() {
+		if *asJSON {
+			enc := json.NewEncoder(stdout)
+			enc.SetIndent("", "  ")
+			enc.Encode(res)
+			return
+		}
+		printExtensions(res, *all || *verbose)
+		if *verbose {
+			for _, n := range res.Notes {
+				printNote(n)
+			}
 		}
 	}
 
-	if *asJSON {
-		enc := json.NewEncoder(os.Stdout)
-		enc.SetIndent("", "  ")
-		enc.Encode(res)
+	if *output != "" {
+		useColor = false
+		sink, err := newSink(*output, false, *asJSON) // single target → single file
+		if err != nil {
+			fatal(err)
+		}
+		p, err := sink.write(target, renderCaptured(render))
+		if err != nil {
+			fatal(err)
+		}
+		fmt.Fprintf(os.Stderr, "%s %s\n", cDim("wrote"), p)
 		return
 	}
-	printExtensions(res, *all || *verbose)
-	if *verbose {
-		for _, n := range res.Notes {
-			fmt.Printf("  %s %s\n", cDim("›"), cDim(n))
-		}
-	}
-	if *output != "" {
-		fmt.Printf("\n%s wrote %s\n", cDim("›"), *output)
-	}
+	render()
 }
 
 func printExtensions(res *t3finger.ExtResult, all bool) {
-	fmt.Printf("  %s     HTTP %d, %d bytes = not installed\n\n",
+	fmt.Fprintf(stdout, "  %s     HTTP %d, %d bytes = not installed\n\n",
 		cDim("baseline"), res.Baseline.Status, res.Baseline.Size)
 
 	if res.NotEnumerable {
-		fmt.Printf("  %s\n\n", cYellow("⚠ "+firstNote(res.Notes)))
+		fmt.Fprintf(stdout, "  %s\n\n", cYellow("⚠ "+firstNote(res.Notes)))
 	}
 
 	confirmed, unconfirmed := 0, 0
@@ -195,35 +202,35 @@ func printExtensions(res *t3finger.ExtResult, all bool) {
 			if e.ComposerName != "" {
 				name += cDim(" [" + e.ComposerName + "]")
 			}
-			fmt.Printf("  %s %s%s  %s\n", cGreen("[+]"), cBold(name), ver, cDim(ev))
+			fmt.Fprintf(stdout, "  %s %s%s  %s\n", cGreen("[+]"), cBold(name), ver, cDim(ev))
 			if n := len(e.Requires); n > 0 {
-				fmt.Printf("      %s %s\n", cDim("deps"), cDim(depsSummary(e.Requires)))
+				fmt.Fprintf(stdout, "      %s %s\n", cDim("deps"), cDim(depsSummary(e.Requires)))
 			}
 			for _, v := range e.Vulns {
-				fmt.Printf("      %s %s\n", cRed("⚠"), advLine(v))
+				fmt.Fprintf(stdout, "      %s %s\n", cRed("⚠"), advLine(v))
 			}
 			if n := len(e.VulnsPossible); n > 0 {
-				fmt.Printf("      %s %s\n", cYellow("~"), cDim(fmt.Sprintf("%d known CVE%s for this package — version unknown, verify", n, plural2(n))))
+				fmt.Fprintf(stdout, "      %s %s\n", cYellow("~"), cDim(fmt.Sprintf("%d known CVE%s for this package — version unknown, verify", n, plural2(n))))
 			}
 		} else {
-			fmt.Printf("  %s %s  %s\n", cYellow("[?]"), e.Package, cDim("(directory only — stale symlink?)"))
+			fmt.Fprintf(stdout, "  %s %s  %s\n", cYellow("[?]"), e.Package, cDim("(directory only — stale symlink?)"))
 		}
 	}
 
-	fmt.Printf("\n%s probed %d, %s %d confirmed", cDim("›"), res.Probed, cGreen("●"), confirmed)
+	fmt.Fprintf(stdout, "\n%s probed %d, %s %d confirmed", cDim("›"), res.Probed, cGreen("●"), confirmed)
 	if unconfirmed > 0 {
 		hint := ""
 		if !all {
 			hint = cDim(" (use -all to list)")
 		}
-		fmt.Printf(", %s %d unconfirmed%s", cYellow("◐"), unconfirmed, hint)
+		fmt.Fprintf(stdout, ", %s %d unconfirmed%s", cYellow("◐"), unconfirmed, hint)
 	}
 	if res.Errors > 0 {
-		fmt.Printf(", %s %d errors", cRed("✗"), res.Errors)
+		fmt.Fprintf(stdout, ", %s %d errors", cRed("✗"), res.Errors)
 	}
-	fmt.Println()
+	fmt.Fprintln(stdout)
 	if res.Errors > 0 {
-		fmt.Println(cDim("  errors usually mean rate limiting — lower --rate and -c, then retry"))
+		fmt.Fprintln(stdout, cDim("  errors usually mean rate limiting — lower --rate and -c, then retry"))
 	}
 }
 

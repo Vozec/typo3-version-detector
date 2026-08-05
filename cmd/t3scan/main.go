@@ -18,6 +18,7 @@ package main
 
 import (
 	"bufio"
+	"flag"
 	"fmt"
 	"io"
 	"os"
@@ -69,7 +70,27 @@ For authorized security testing only.
 `)
 }
 
-// gatherTargets collects targets from args, an optional list file, and stdin.
+// parseFlags parses flags that may be interspersed with positional args (Go's
+// flag package stops at the first positional), so `t3scan urls.txt -o out` and
+// `t3scan -o out urls.txt` both work. Returns the positional arguments.
+func parseFlags(fs *flag.FlagSet, args []string) []string {
+	var positionals []string
+	for {
+		_ = fs.Parse(args)
+		args = fs.Args()
+		if len(args) == 0 {
+			break
+		}
+		positionals = append(positionals, args[0])
+		args = args[1:]
+	}
+	return positionals
+}
+
+// gatherTargets collects targets from positional args (each a URL OR a file of
+// URLs), an optional -l list file, and stdin (piped, or "-"). So all of these
+// work: `t3scan https://x`, `t3scan urls.txt`, `cat urls.txt | t3scan`,
+// `t3scan -l urls.txt`.
 func gatherTargets(args []string, listFile string) []string {
 	seen := map[string]bool{}
 	var out []string
@@ -81,14 +102,26 @@ func gatherTargets(args []string, listFile string) []string {
 		seen[s] = true
 		out = append(out, s)
 	}
-	for _, a := range args {
-		add(a)
-	}
 	readLines := func(r io.Reader) {
 		sc := bufio.NewScanner(r)
 		sc.Buffer(make([]byte, 1<<20), 1<<20)
 		for sc.Scan() {
 			add(sc.Text())
+		}
+	}
+	for _, a := range args {
+		switch {
+		case a == "-":
+			readLines(os.Stdin)
+		case isFile(a):
+			fh, err := os.Open(a)
+			if err != nil {
+				fatal(err)
+			}
+			readLines(fh)
+			fh.Close()
+		default:
+			add(a)
 		}
 	}
 	switch {
@@ -105,6 +138,16 @@ func gatherTargets(args []string, listFile string) []string {
 		readLines(os.Stdin)
 	}
 	return out
+}
+
+// isFile reports whether path exists and is a regular file (so a positional
+// argument can be a URL list instead of a single target).
+func isFile(path string) bool {
+	if strings.Contains(path, "://") {
+		return false
+	}
+	fi, err := os.Stat(path)
+	return err == nil && fi.Mode().IsRegular()
 }
 
 func stdinIsTTY() bool {
@@ -149,7 +192,7 @@ func cRed(s string) string    { return sgr("31", s) }
 func cCyan(s string) string   { return sgr("36", s) }
 
 func kv(label, value string) {
-	fmt.Printf("  %s  %s\n", cDim(fmt.Sprintf("%-16s", label)), value)
+	fmt.Fprintf(stdout, "  %s  %s\n", cDim(fmt.Sprintf("%-16s", label)), value)
 }
 
 // termWidth returns the usable terminal width (from $COLUMNS), default 100.
@@ -190,10 +233,10 @@ func kvWrap(label string, items []string, sep string) {
 	if cur != "" {
 		lines = append(lines, cur)
 	}
-	fmt.Printf("  %s  %s\n", cDim(fmt.Sprintf("%-16s", label)), lines[0])
+	fmt.Fprintf(stdout, "  %s  %s\n", cDim(fmt.Sprintf("%-16s", label)), lines[0])
 	pad := strings.Repeat(" ", indent)
 	for _, l := range lines[1:] {
-		fmt.Printf("%s%s\n", pad, l)
+		fmt.Fprintf(stdout, "%s%s\n", pad, l)
 	}
 }
 
@@ -228,10 +271,10 @@ func printNote(text string) {
 	first := true
 	flush := func() {
 		if first {
-			fmt.Printf("  %s %s\n", cDim("›"), cDim(line))
+			fmt.Fprintf(stdout, "  %s %s\n", cDim("›"), cDim(line))
 			first = false
 		} else {
-			fmt.Printf("    %s\n", cDim(line))
+			fmt.Fprintf(stdout, "    %s\n", cDim(line))
 		}
 		line = ""
 	}

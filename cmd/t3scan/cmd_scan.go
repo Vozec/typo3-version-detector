@@ -34,19 +34,21 @@ func runScan(args []string) {
 	wordlist := fs.String("w", "", "extension candidate list (with -ext)")
 	cve := fs.Bool("cve", true, "map versions to known CVEs")
 	failOnVuln := fs.Bool("fail-on-vuln", false, "exit non-zero (2) if any confirmed vulnerability is found")
+	force := fs.Bool("f", false, "force: scan even when classic markers don't confirm TYPO3")
+	fs.BoolVar(force, "force", false, "alias for -f")
 	listFile := fs.String("l", "", "read targets from a file (one URL per line; '-' for stdin)")
-	output := fs.String("o", "", "write the JSON report to this file")
+	output := fs.String("o", "", "output file (single target) or directory (list); created if missing")
 	timeout := fs.Duration("timeout", 20*time.Minute, "overall timeout")
 	fs.Usage = func() {
-		fmt.Fprintf(os.Stderr, "Full TYPO3 scan: core version + CVEs, optionally extensions.\n\nUsage:\n  t3scan scan [flags] <url>\n\nFlags:\n")
+		fmt.Fprintf(os.Stderr, "Full TYPO3 scan: core version + CVEs, optionally extensions.\n\nUsage:\n  t3scan scan [flags] <url|file> [...]\n  cat urls.txt | t3scan scan -ext -o out/\n\nFlags:\n")
 		fs.PrintDefaults()
 	}
-	_ = fs.Parse(args)
-	if *noColor || *asJSON {
+	positionals := parseFlags(fs, args)
+	if *noColor || *asJSON || *output != "" {
 		useColor = false
 	}
 
-	targets := gatherTargets(fs.Args(), *listFile)
+	targets := gatherTargets(positionals, *listFile)
 	if len(targets) == 0 {
 		fs.Usage()
 		os.Exit(2)
@@ -68,7 +70,7 @@ func runScan(args []string) {
 	ctx, cancel := context.WithTimeout(context.Background(), *timeout)
 	defer cancel()
 
-	opts := scanOpts{doExt: *doExt, mode: *mode, wordlist: *wordlist, cve: *cve, asJSON: *asJSON}
+	opts := scanOpts{doExt: *doExt, mode: *mode, wordlist: *wordlist, cve: *cve, asJSON: *asJSON, force: *force}
 	reports := make([]*scanReport, 0, len(targets))
 	for _, target := range targets {
 		if !*asJSON && len(targets) > 1 {
@@ -77,40 +79,49 @@ func runScan(args []string) {
 		reports = append(reports, scanOneTarget(ctx, f, target, opts))
 	}
 
-	// Output.
-	switch {
-	case *asJSON:
-		emitJSON(os.Stdout, reports)
-	default:
-		for _, rep := range reports {
-			printVersion(rep.Version, *verbose)
-			switch {
-			case rep.Extensions != nil:
-				fmt.Printf("\n%s %s\n", cCyan("▸"), cBold("extensions"))
-				printExtensions(rep.Extensions, false)
-			case rep.Version.IsTypo3:
-				// Make the -ext opt-in discoverable — this is why "no plugins".
-				hint := "9,289-key TER catalogue"
-				if rep.Version.Mode == t3finger.ModeComposer {
-					hint = "~4,400 Composer packages via /_assets/"
-				}
-				fmt.Printf("\n  %s %s\n", cYellow("extensions       not scanned —"),
-					cBold("add -ext to enumerate the "+hint))
-				if n := len(rep.Version.ExtensionsHint); n > 0 {
-					fmt.Printf("     %s\n", cDim(fmt.Sprintf("(%d were seen passively in the HTML, shown above)", n)))
-				}
+	// Render one report to the current stdout writer (human or JSON).
+	renderReport := func(rep *scanReport) {
+		if *asJSON {
+			enc := json.NewEncoder(stdout)
+			enc.SetIndent("", "  ")
+			enc.Encode(rep)
+			return
+		}
+		printVersion(rep.Version, *verbose, *force)
+		switch {
+		case rep.Extensions != nil:
+			fmt.Fprintf(stdout, "\n%s %s\n", cCyan("▸"), cBold("extensions"))
+			printExtensions(rep.Extensions, false)
+		case rep.Version.IsTypo3 || *force:
+			hint := "9,289-key TER catalogue"
+			if rep.Version.Mode == t3finger.ModeComposer {
+				hint = "~4,400 Composer packages via /_assets/"
+			}
+			fmt.Fprintf(stdout, "\n  %s %s\n", cYellow("extensions       not scanned —"),
+				cBold("add -ext to enumerate the "+hint))
+			if n := len(rep.Version.ExtensionsHint); n > 0 {
+				fmt.Fprintf(stdout, "     %s\n", cDim(fmt.Sprintf("(%d were seen passively in the HTML, shown above)", n)))
 			}
 		}
 	}
+
+	// Output: one file per target when -o is set, else stdout.
 	if *output != "" {
-		fh, err := os.Create(*output)
+		sink, err := newSink(*output, len(targets) > 1, *asJSON)
 		if err != nil {
 			fatal(err)
 		}
-		emitJSON(fh, reports)
-		fh.Close()
-		if !*asJSON {
-			fmt.Printf("\n%s wrote %s\n", cDim("›"), *output)
+		for _, rep := range reports {
+			content := renderCaptured(func() { renderReport(rep) })
+			p, err := sink.write(rep.Target, content)
+			if err != nil {
+				fatal(err)
+			}
+			fmt.Fprintf(os.Stderr, "%s %s\n", cDim("wrote"), p)
+		}
+	} else {
+		for _, rep := range reports {
+			renderReport(rep)
 		}
 	}
 
@@ -131,17 +142,7 @@ type scanOpts struct {
 	wordlist string
 	cve      bool
 	asJSON   bool
-}
-
-// emitJSON writes one report (object) or many (array).
-func emitJSON(w *os.File, reports []*scanReport) {
-	enc := json.NewEncoder(w)
-	enc.SetIndent("", "  ")
-	if len(reports) == 1 {
-		enc.Encode(reports[0])
-	} else {
-		enc.Encode(reports)
-	}
+	force    bool
 }
 
 func scanOneTarget(ctx context.Context, f *t3finger.Fingerprinter, target string, o scanOpts) *scanReport {
@@ -152,7 +153,7 @@ func scanOneTarget(ctx context.Context, f *t3finger.Fingerprinter, target string
 		rep.Version = &t3finger.VersionResult{Target: target, Notes: []string{err.Error()}, Confidence: "low"}
 	}
 
-	if o.doExt && rep.Version.IsTypo3 {
+	if o.doExt && (rep.Version.IsTypo3 || o.force) {
 		chosen := o.mode
 		if chosen == "auto" {
 			if rep.Version.Mode == t3finger.ModeLegacy {

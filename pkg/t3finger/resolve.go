@@ -142,7 +142,7 @@ func (f *Fingerprinter) resolveComposerAsset(ctx context.Context, base, composer
 	h := hex.EncodeToString(md5Sum("/vendor/" + composer + "/"))
 	assetURL := base + "/_assets/" + h + "/"
 	if evidence == "" {
-		evidence = "HTML /_assets/" + h[:8] + "…"
+		evidence = "HTML /_assets/" + h + "/" // full hash — this is stored data, never truncate
 	}
 	mk := func(key string) Extension {
 		return Extension{

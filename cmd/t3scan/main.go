@@ -36,6 +36,8 @@ func main() {
 		runScan(os.Args[2:])
 	case "extensions", "ext", "enum":
 		runExtensions(os.Args[2:])
+	case "print":
+		runPrint(os.Args[2:])
 	case "buildwordlist":
 		runBuildWordlist(os.Args[2:])
 	case "builddb":
@@ -64,6 +66,7 @@ Usage:
   t3scan [flags] <url> [<url> ...]     detect TYPO3 core version(s) + CVEs
   t3scan scan [flags] <url>            full scan: version + CVEs (+ extensions with -ext)
   t3scan extensions [flags] <url>      enumerate installed extensions
+  t3scan print [--by-plugin] <path>    render saved scan JSON (file/dir) as tables
   t3scan buildwordlist [-keys] [-o f]  refresh extension list (Packagist / TER keys)
   t3scan builddb [flags]               (re)build the version fingerprint DB
   t3scan buildextdb [flags]            (re)build the extension-probe DB from TER packages

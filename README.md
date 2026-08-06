@@ -95,6 +95,9 @@ t3scan -json https://example.com                 # machine-readable
 t3scan urls.txt -o out/                          # a file of targets -> one report per host in out/
 cat urls.txt | t3scan -json -o out/              # or stream targets on stdin
 t3scan -l scope.txt --fail-on-vuln               # scan a list, exit 2 if any CVE hits
+t3scan scan -ext -json -o out/ -l scope.txt      # scan many, one JSON report per host
+t3scan print out/                                # tabulate saved reports by host
+t3scan print --by-plugin out/                    # invert: which host runs each plugin
 t3scan -f https://example.com                    # force: report even if markers don't confirm TYPO3
 t3scan -k -proxy socks5://127.0.0.1:9050 https://...   # skip TLS, route through Tor
 ```

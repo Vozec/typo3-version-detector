@@ -82,8 +82,10 @@ func (f *Fingerprinter) PassiveExtensions(ctx context.Context, target string) (*
 			}
 			seenComposer[composer] = true
 			// Collision-aware: resolve which key is really installed by hashing
-			// the served files; may return several flagged Ambiguous.
-			for _, e := range f.resolveComposerAsset(ctx, base, composer, "") {
+			// the served files; may return several flagged Ambiguous. Confirmation
+			// still requires the asset to actually serve — a stale HTML reference
+			// to a /_assets/ dir that now 404s does not count as installed.
+			for _, e := range f.resolveComposerAsset(ctx, base, composer, "HTML") {
 				upsert(e)
 			}
 		}

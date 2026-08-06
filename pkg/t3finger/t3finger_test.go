@@ -4,6 +4,7 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 )
 
@@ -25,6 +26,51 @@ func TestDetectWAF(t *testing.T) {
 		if got := detectWAF(c.hdr, []byte(c.body)); got != c.want {
 			t.Errorf("detectWAF(%v,%q) = %q, want %q", c.hdr, c.body, got, c.want)
 		}
+	}
+}
+
+func TestEnumerateSkips5xxAndSoft403(t *testing.T) {
+	const (
+		newsHash = "f6ef6adaf5c92bf687a31a3adbcb0f7b" // md5("/vendor/georgringer/news/")
+		pmwHash  = "948410ace0dfa9ad00627133d9ca8a23" // md5("/vendor/in2code/powermail/")
+	)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		p := r.URL.Path
+		switch {
+		case strings.Contains(p, pmwHash):
+			w.WriteHeader(502) // transient gateway error — must NOT be a hit
+		case strings.Contains(p, newsHash):
+			if strings.HasSuffix(p, "Extension.svg") { // a real served asset
+				w.Header().Set("Content-Type", "image/svg+xml")
+				w.Write([]byte("<svg/>"))
+				return
+			}
+			w.WriteHeader(403) // dir listing forbidden
+		default:
+			w.WriteHeader(404) // control / everything else absent
+		}
+	}))
+	defer srv.Close()
+
+	f, _ := New()
+	res, err := f.EnumerateExtensions(context.Background(), srv.URL,
+		[]string{"georgringer/news", "in2code/powermail"}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, e := range res.Extensions {
+		if strings.Contains(e.Package, "powermail") {
+			t.Errorf("a 502 gateway error was reported as an extension: %+v", e)
+		}
+	}
+	newsConfirmed := false
+	for _, e := range res.Extensions {
+		if e.Key == "news" && e.Confirmed {
+			newsConfirmed = true
+		}
+	}
+	if !newsConfirmed {
+		t.Errorf("news (real served asset) should be confirmed; got %+v", res.Extensions)
 	}
 }
 

@@ -134,20 +134,23 @@ func containsStr(ss []string, want string) bool {
 // matches. If exactly one matches it is returned resolved; if none or several
 // match, ALL plausible candidates are returned flagged Ambiguous (only one is
 // truly installed) with their authors + links so a human can tell them apart.
-func (f *Fingerprinter) resolveComposerAsset(ctx context.Context, base, composer, evidence string) []Extension {
+func (f *Fingerprinter) resolveComposerAsset(ctx context.Context, base, composer, source string) []Extension {
 	if composer == "" || f.ExtProbes == nil {
 		return nil
 	}
 	cands := f.ExtProbes.CandidatesForComposer(composer)
 	h := hex.EncodeToString(md5Sum("/vendor/" + composer + "/"))
 	assetURL := base + "/_assets/" + h + "/"
-	if evidence == "" {
-		evidence = "HTML /_assets/" + h + "/" // full hash — this is stored data, never truncate
+	evidence := "/_assets/" + h + "/" // full hash — stored data, never truncated
+	if source != "" {
+		evidence = source + " " + evidence
 	}
 	mk := func(key string) Extension {
+		// Confirmed is NOT set here — it is earned below by a real served asset or
+		// a DB version match, so a soft-403 / gateway blip never counts as install.
 		return Extension{
 			Package: composer, ComposerName: composer, Key: key,
-			Confirmed: true, Status: 200, AssetURL: assetURL, Evidence: evidence,
+			Status: 200, AssetURL: assetURL, Evidence: evidence,
 		}
 	}
 
@@ -162,7 +165,11 @@ func (f *Fingerprinter) resolveComposerAsset(ctx context.Context, base, composer
 			entry := f.ExtProbes.Extensions[key]
 			if vs := f.extVersionComposer(ctx, assetURL, &entry); len(vs) > 0 {
 				setComposerVersion(&e, vs)
+				e.Confirmed = true // a served file matched the DB — proof
 			}
+		}
+		if !e.Confirmed && f.assetServes(ctx, assetURL) {
+			e.Confirmed = true // a real static file is served here — proof enough
 		}
 		f.finalizeExt(&e)
 		return []Extension{e}
@@ -173,26 +180,44 @@ func (f *Fingerprinter) resolveComposerAsset(ctx context.Context, base, composer
 	for _, key := range cands {
 		e := mk(key)
 		entry := f.ExtProbes.Extensions[key]
-		hit := false
 		if vs := f.extVersionComposer(ctx, assetURL, &entry); len(vs) > 0 {
 			setComposerVersion(&e, vs)
-			hit = true
+			e.Confirmed = true
 		}
 		f.finalizeExt(&e)
 		all = append(all, e)
-		if hit {
+		if e.Confirmed {
 			matched = append(matched, e)
 		}
 	}
 	if len(matched) == 1 {
 		return matched // static files singled one out
 	}
-	pick := all // 0 matched → show every candidate
+	// Ambiguous: only report if the shared dir actually serves something.
+	serves := f.assetServes(ctx, assetURL)
+	pick := all // 0 matched → every candidate
 	if len(matched) > 1 {
 		pick = matched // shared files → the ones that matched
 	}
 	for i := range pick {
 		pick[i].Ambiguous = true
+		if serves {
+			pick[i].Confirmed = true
+		}
 	}
 	return pick
+}
+
+// assetServes reports whether a /_assets/<md5>/ directory actually serves a real
+// static file (HTTP 200, non-HTML, non-empty) under a well-known subpath — proof
+// the package is installed, as opposed to a soft-403 / WAF / gateway error that
+// merely differs from the 404 baseline.
+func (f *Fingerprinter) assetServes(ctx context.Context, assetURL string) bool {
+	for _, sub := range confirmPaths {
+		r, err := f.getProbe(ctx, assetURL+sub)
+		if err == nil && r != nil && r.Status == 200 && len(r.Body) > 0 && r.isAsset() {
+			return true
+		}
+	}
+	return false
 }

@@ -198,11 +198,14 @@ func (f *Fingerprinter) EnumerateExtensions(ctx context.Context, target string, 
 			switch {
 			case !ok:
 				atomic.AddInt64(&errors, 1)
-			case st == 429 || st == 503:
-				// A rate-limit / block reply is NOT an installed package — count it
-				// so we can detect a mid-scan ban instead of reporting garbage hits.
+			case st == 429 || st >= 500:
+				// Throttle (429) or a gateway/server error (500/502/503/504) is NOT
+				// an installed package — a transient 502 flood would otherwise become
+				// dozens of false positives. Count it to detect a mid-scan block.
 				atomic.AddInt64(&blockN, 1)
-			case st != cs:
+			case st == 403 || st == 200:
+				// The only "installed" signals vs a 404 baseline: 403 (dir listing
+				// forbidden) or 200 (served). Anything else is not a hit.
 				_ = sz
 				mu.Lock()
 				hits = append(hits, hit{pkg, st})
@@ -227,7 +230,7 @@ func (f *Fingerprinter) EnumerateExtensions(ctx context.Context, target string, 
 			res.NotEnumerable = true
 			res.BlockReason = "control went from HTTP 404 to " + itoa(cs2) + " mid-scan — rate-limited / IP-banned"
 			if blockN > 0 {
-				res.BlockReason += " (" + itoa(int(blockN)) + " probes got 429/503)"
+				res.BlockReason += " (" + itoa(int(blockN)) + " probes got 429/5xx)"
 			}
 			res.Notes = append(res.Notes, "extension results discarded — "+res.BlockReason+"; lower -rate/-t and retry from an unbanned IP")
 			res.Extensions = nil
@@ -235,37 +238,25 @@ func (f *Fingerprinter) EnumerateExtensions(ctx context.Context, target string, 
 		}
 	}
 
-	// Confirm each hit: a real install answers on at least one known subpath;
-	// a dangling symlink 404s everywhere beneath.
+	// Server errors that didn't amount to a full ban still mean some probes were
+	// lost — say so rather than pretending the sweep was complete.
+	if blockN > 0 {
+		res.Notes = append(res.Notes, itoa(int(blockN))+" probes returned 5xx/429 (server errors / throttling); some extensions may have been missed — lower -rate/-t and rescan")
+	}
+
+	// Resolve each hit. Confirmation is NOT a bare 403 — resolveComposerAsset
+	// requires the /_assets/<md5>/ dir to actually serve a real static file (or a
+	// version to match the DB); a soft-403 / gateway blip stays unconfirmed.
 	sort.Slice(hits, func(i, j int) bool { return hits[i].pkg < hits[j].pkg })
 	for _, h := range hits {
-		assetURL := AssetURL(base, h.pkg)
-		// Confirm the hit is a real install (not a dangling symlink) via a
-		// well-known subpath.
-		confirmed, evidence := false, ""
-		for _, sub := range confirmPaths {
-			st, sz, ok := f.head(ctx, assetURL+sub)
-			if ok && (st != cs || sz != csz) {
-				confirmed, evidence = true, sub
-				break
-			}
-		}
-		// Version by static-file hash, collision-aware: when several keys claim
-		// this composer name, resolveComposerAsset hashes the served files to
-		// pick the installed one (or flags all as ambiguous).
-		exts := f.resolveComposerAsset(ctx, base, h.pkg, evidence)
+		exts := f.resolveComposerAsset(ctx, base, h.pkg, "")
 		if len(exts) == 0 {
-			exts = []Extension{{Package: h.pkg, ComposerName: h.pkg, AssetURL: assetURL, Status: h.status}}
-			f.finalizeExt(&exts[0])
+			e := Extension{Package: h.pkg, ComposerName: h.pkg, AssetURL: AssetURL(base, h.pkg)}
+			f.finalizeExt(&e)
+			exts = []Extension{e}
 		}
 		for i := range exts {
 			exts[i].Status = h.status
-			if confirmed {
-				exts[i].Confirmed = true
-				if exts[i].Evidence == "" {
-					exts[i].Evidence = evidence
-				}
-			}
 			res.Extensions = append(res.Extensions, exts[i])
 		}
 	}

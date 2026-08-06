@@ -76,6 +76,13 @@ type VersionResult struct {
 	Markers    []string    `json:"markers,omitempty"` // is-TYPO3 evidence
 	Files      []FileProbe `json:"files,omitempty"`
 	Notes      []string    `json:"notes,omitempty"`
+
+	// Blocked is set when the target looks like it is denying us (IP ban / WAF /
+	// rate-limit) rather than genuinely not being TYPO3 — any result is then
+	// unreliable. BlockReason/WAF explain what was seen.
+	Blocked     bool   `json:"blocked,omitempty"`
+	BlockReason string `json:"blockReason,omitempty"`
+	WAF         string `json:"waf,omitempty"`
 	// LatestInBranch is the newest stable release of the detected version's
 	// branch (e.g. 13.4.35 for a 13.4.x target); NewestOverall is the newest
 	// stable TYPO3 release overall. Outdated is set when the target is behind
@@ -107,6 +114,13 @@ func (f *Fingerprinter) Detect(ctx context.Context, rawURL string) (*VersionResu
 		return nil, err
 	}
 	res := &VersionResult{Target: base, Mode: ModeUnknown}
+
+	// 0. Ban / WAF check: if the root itself denies us (403/429/503/challenge),
+	// every probe below will 4xx too — flag it so "not TYPO3 / no plugins" is not
+	// mistaken for a clean negative.
+	if rc := f.Reachability(ctx, base); rc.Blocked {
+		res.Blocked, res.BlockReason, res.WAF = true, rc.Reason, rc.WAF
+	}
 
 	// 1. Identify TYPO3 + install mode + base path, harvesting asset URLs.
 	assets := f.identify(ctx, base, res)

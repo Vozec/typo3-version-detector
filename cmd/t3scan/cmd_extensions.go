@@ -207,6 +207,11 @@ func runExtensions(args []string) {
 }
 
 func printExtensions(res *t3finger.ExtResult, all bool) {
+	if res.Blocked {
+		fmt.Fprintf(stdout, "  %s %s\n", cRed("⛔ BLOCKED —"), cYellow(res.BlockReason))
+		printNote("results are unreliable behind an IP ban / WAF; retry from another IP, lower -rate/-t, or use -proxy.")
+		return
+	}
 	if res.Baseline.OK { // only meaningful when a brute-force pass calibrated it
 		fmt.Fprintf(stdout, "  %s  HTTP %d, %d bytes = not installed\n",
 			cDim("baseline"), res.Baseline.Status, res.Baseline.Size)

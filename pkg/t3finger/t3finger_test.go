@@ -1,6 +1,56 @@
 package t3finger
 
-import "testing"
+import (
+	"context"
+	"net/http"
+	"net/http/httptest"
+	"testing"
+)
+
+func TestDetectWAF(t *testing.T) {
+	cases := []struct {
+		hdr  map[string][]string
+		body string
+		want string
+	}{
+		{map[string][]string{"Server": {"cloudflare"}}, "", "Cloudflare"},
+		{map[string][]string{"Cf-Ray": {"abc123"}}, "", "Cloudflare"},
+		{map[string][]string{"X-Iinfo": {"x"}}, "", "Imperva/Incapsula"},
+		{map[string][]string{"X-Sucuri-Id": {"x"}}, "", "Sucuri"},
+		{nil, "Request unsuccessful. Incapsula incident ID: 123", "Imperva/Incapsula"},
+		{nil, "The requested URL was rejected", "F5 BIG-IP"},
+		{nil, "welcome to our site", ""},
+	}
+	for _, c := range cases {
+		if got := detectWAF(c.hdr, []byte(c.body)); got != c.want {
+			t.Errorf("detectWAF(%v,%q) = %q, want %q", c.hdr, c.body, got, c.want)
+		}
+	}
+}
+
+func TestReachability(t *testing.T) {
+	f, _ := New()
+
+	blocked := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Server", "cloudflare")
+		w.WriteHeader(403)
+		w.Write([]byte("Attention Required! | Cloudflare"))
+	}))
+	defer blocked.Close()
+	rc := f.Reachability(context.Background(), blocked.URL)
+	if !rc.Blocked || rc.Status != 403 || rc.WAF != "Cloudflare" {
+		t.Fatalf("blocked case: %+v", rc)
+	}
+
+	ok := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(200)
+		w.Write([]byte("<html>real content</html>"))
+	}))
+	defer ok.Close()
+	if rc := f.Reachability(context.Background(), ok.URL); rc.Blocked {
+		t.Errorf("healthy root flagged blocked: %+v", rc)
+	}
+}
 
 func TestAssetURL(t *testing.T) {
 	// Must match the reference technique exactly: md5("/vendor/<vendor>/<pkg>/")

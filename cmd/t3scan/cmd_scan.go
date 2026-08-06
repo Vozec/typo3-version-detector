@@ -203,6 +203,14 @@ func scanOneTarget(ctx context.Context, f *t3finger.Fingerprinter, target string
 		if stderrIsTTY() && !o.asJSON {
 			fmt.Fprint(os.Stderr, "\r\033[K")
 		}
+		// Passive discovery (HTML /_assets md5 reversal, composer.lock,
+		// PackageStates) — finds plugins even when brute force is blocked, and is
+		// merged into the result. Skipped when we're already known to be banned.
+		if o.extSel == "" && !(rep.Extensions != nil && rep.Extensions.Blocked) {
+			if passive, err := f.PassiveExtensions(ctx, target); err == nil {
+				rep.Extensions = mergeExtResults(rep.Extensions, passive)
+			}
+		}
 		if o.cve && rep.Extensions != nil {
 			_ = f.AnnotateExtensionCVEs(ctx, rep.Extensions)
 		}

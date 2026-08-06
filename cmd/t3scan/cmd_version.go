@@ -174,6 +174,11 @@ func printVersion(r *t3finger.VersionResult, verbose, force bool) {
 	fmt.Fprintf(stdout, "\n%s\n", cDim(strings.Repeat("─", 60)))
 	fmt.Fprintf(stdout, "%s %s\n", cCyan("▸"), cBold(r.Target))
 
+	if r.Blocked {
+		fmt.Fprintf(stdout, "  %s %s\n", cRed("⛔ BLOCKED —"), cYellow(r.BlockReason))
+		printNote("this looks like an IP ban / WAF block, not a clean result — findings below are unreliable. Retry from another IP, lower -rate/-t, or via -proxy.")
+	}
+
 	if !r.IsTypo3 && !force {
 		fmt.Fprintf(stdout, "  %s\n", cRed("✗ not detected as TYPO3"))
 		for _, n := range r.Notes {

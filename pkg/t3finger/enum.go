@@ -87,7 +87,9 @@ type ExtResult struct {
 	Errors        int         `json:"errors"`
 	Baseline      Baseline    `json:"baseline"`
 	Extensions    []Extension `json:"extensions"`
-	NotEnumerable bool        `json:"notEnumerable"` // control probe itself looked like a hit
+	NotEnumerable bool        `json:"notEnumerable"`         // control probe itself looked like a hit
+	Blocked       bool        `json:"blocked,omitempty"`     // IP ban / WAF / rate-limit detected
+	BlockReason   string      `json:"blockReason,omitempty"` // what was observed
 	Notes         []string    `json:"notes,omitempty"`
 }
 
@@ -134,10 +136,30 @@ func (f *Fingerprinter) EnumerateExtensions(ctx context.Context, target string, 
 	// every /_assets/<x>/ the same way (blanket rule / SPA catch-all): the
 	// technique cannot discriminate here.
 	if cs != 404 {
+		res.NotEnumerable = true
+		// 429/503 on the control are unambiguous rate-limit/block replies (never a
+		// real "installed" or catch-all signal) — abort as blocked outright.
+		if cs == 429 || cs == 503 {
+			res.Blocked = true
+			res.BlockReason = "control probe returned HTTP " + itoa(cs) + " — rate-limited / blocked"
+			if rc := f.Reachability(ctx, base); rc.WAF != "" {
+				res.BlockReason += " (" + rc.WAF + ")"
+			}
+			res.Notes = append(res.Notes, "enumeration aborted — "+res.BlockReason+"; lower -rate/-t or retry from an unbanned IP")
+			return res, nil
+		}
+		// 403 is ambiguous (full ban vs a per-path /_assets/ WAF rule): check the
+		// root to tell them apart.
+		if cs == 403 {
+			if rc := f.Reachability(ctx, base); rc.Blocked {
+				res.Blocked, res.BlockReason = true, rc.Reason
+				res.Notes = append(res.Notes, "enumeration aborted — "+rc.Reason+"; the whole site is denying us (not just /_assets/)")
+				return res, nil
+			}
+		}
 		// The host answers every /_assets/<x>/ the same way (blanket rule / SPA
 		// catch-all): the technique can't discriminate, so don't sweep thousands
 		// of packages producing all-garbage hits — report and return.
-		res.NotEnumerable = true
 		res.Notes = append(res.Notes,
 			"control probe returned HTTP "+itoa(cs)+" (expected 404): host answers /_assets/<hash>/ uniformly; extension enumeration is unreliable here — skipped")
 		return res, nil
@@ -151,6 +173,7 @@ func (f *Fingerprinter) EnumerateExtensions(ctx context.Context, target string, 
 		hits   []hit
 		mu     sync.Mutex
 		errors int64
+		blockN int64 // probes that returned 429/503 (rate-limit / block, not a real signal)
 		done   int64
 		wg     sync.WaitGroup
 		sem    = make(chan struct{}, f.conc())
@@ -172,9 +195,14 @@ func (f *Fingerprinter) EnumerateExtensions(ctx context.Context, target string, 
 			// answers 403. Discriminate on STATUS only — the host's 404 body size
 			// varies by URL (it echoes the hash), so a size compare flags random
 			// absent packages as hits.
-			if !ok {
+			switch {
+			case !ok:
 				atomic.AddInt64(&errors, 1)
-			} else if st != cs {
+			case st == 429 || st == 503:
+				// A rate-limit / block reply is NOT an installed package — count it
+				// so we can detect a mid-scan ban instead of reporting garbage hits.
+				atomic.AddInt64(&blockN, 1)
+			case st != cs:
 				_ = sz
 				mu.Lock()
 				hits = append(hits, hit{pkg, st})
@@ -188,6 +216,24 @@ func (f *Fingerprinter) EnumerateExtensions(ctx context.Context, target string, 
 	}
 	wg.Wait()
 	res.Errors = int(errors)
+
+	// Mid-scan ban detection: if a meaningful share of probes got rate-limited/
+	// blocked, or the hit count is implausibly large (a WAF 403-ing everything),
+	// re-probe the known-absent control. If it no longer 404s, we were banned
+	// during the sweep — the hits are garbage, so drop them and say so.
+	if blockN > 5 || len(hits) > 200 {
+		if cs2, _, ok := f.head(ctx, AssetURL(base, "zzz-no-such-vendor/zzz-recheck-"+randToken())); ok && cs2 != 404 {
+			res.Blocked = true
+			res.NotEnumerable = true
+			res.BlockReason = "control went from HTTP 404 to " + itoa(cs2) + " mid-scan — rate-limited / IP-banned"
+			if blockN > 0 {
+				res.BlockReason += " (" + itoa(int(blockN)) + " probes got 429/503)"
+			}
+			res.Notes = append(res.Notes, "extension results discarded — "+res.BlockReason+"; lower -rate/-t and retry from an unbanned IP")
+			res.Extensions = nil
+			return res, nil
+		}
+	}
 
 	// Confirm each hit: a real install answers on at least one known subpath;
 	// a dangling symlink 404s everywhere beneath.

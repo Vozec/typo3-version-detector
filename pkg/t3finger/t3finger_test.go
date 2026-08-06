@@ -157,6 +157,36 @@ func TestComposerNameCollisionDeterministic(t *testing.T) {
 	}
 }
 
+func TestDisambiguateByLock(t *testing.T) {
+	f := &Fingerprinter{ExtProbes: &ExtProbeDB{Extensions: map[string]ExtEntry{
+		"news":        {Composer: "georgringer/news", Versions: []string{"11.3.0", "12.0.0"}},
+		"local_dummy": {Composer: "georgringer/news", Versions: []string{"10.10.10"}},
+	}}}
+	newByID := func() map[string]*Extension {
+		return map[string]*Extension{
+			"K:news":        {Package: "georgringer/news", ComposerName: "georgringer/news", Key: "news", Ambiguous: true},
+			"K:local_dummy": {Package: "georgringer/news", ComposerName: "georgringer/news", Key: "local_dummy", Ambiguous: true},
+		}
+	}
+
+	// 11.3.0 exists only in news → resolves to news, drops local_dummy.
+	byID := newByID()
+	f.disambiguateByLock(byID, map[string]string{"georgringer/news": "11.3.0"})
+	if _, ok := byID["K:local_dummy"]; ok {
+		t.Error("local_dummy should have been dropped")
+	}
+	if nw := byID["K:news"]; nw == nil || nw.Ambiguous || nw.Version != "11.3.0" {
+		t.Fatalf("news not resolved: %+v", nw)
+	}
+
+	// A version present in neither history → undecidable, stays ambiguous.
+	byID = newByID()
+	f.disambiguateByLock(byID, map[string]string{"georgringer/news": "13.9.9"})
+	if len(byID) != 2 {
+		t.Errorf("unknown version must not drop candidates; got %d", len(byID))
+	}
+}
+
 func TestParseComposerLock(t *testing.T) {
 	body := []byte(`{"packages":[
 		{"name":"typo3/cms-core","version":"v12.4.8","type":"typo3-cms-framework"},

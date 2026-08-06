@@ -76,6 +76,56 @@ func (f *Fingerprinter) finalizeExt(e *Extension) {
 	f.annotateExtFreshness(e, entry)
 }
 
+// disambiguateByLock resolves collisions that the served files could not: when
+// composer.lock pins an exact version for a shared composer name and only ONE of
+// the ambiguous candidates has that version in its history, that candidate is
+// the installed one — clear its Ambiguous flag and drop the losing siblings.
+func (f *Fingerprinter) disambiguateByLock(byID map[string]*Extension, lockVer map[string]string) {
+	if len(lockVer) == 0 || f.ExtProbes == nil {
+		return
+	}
+	groups := map[string][]*Extension{}
+	for _, e := range byID {
+		if e.Ambiguous {
+			groups[e.ComposerName] = append(groups[e.ComposerName], e)
+		}
+	}
+	for composer, sibs := range groups {
+		ver := lockVer[composer]
+		if ver == "" || len(sibs) < 2 {
+			continue
+		}
+		var winner *Extension
+		n := 0
+		for _, e := range sibs {
+			if entry, ok := f.ExtProbes.Extensions[e.Key]; ok && containsStr(entry.Versions, ver) {
+				winner, n = e, n+1
+			}
+		}
+		if n != 1 || winner == nil {
+			continue // 0 or several candidates ship it → genuinely undecidable
+		}
+		winner.Ambiguous = false
+		winner.Version, winner.VersionSource = ver, "composer.lock"
+		winner.VersionExact, winner.VersionCandidates = false, nil
+		winner.Evidence = "composer.lock — v" + ver + " unique to this key"
+		for _, e := range sibs {
+			if e != winner {
+				delete(byID, "K:"+e.Key)
+			}
+		}
+	}
+}
+
+func containsStr(ss []string, want string) bool {
+	for _, s := range ss {
+		if s == want {
+			return true
+		}
+	}
+	return false
+}
+
 // resolveComposerAsset turns a composer name (behind a /_assets/<md5>/ path) into
 // the installed extension(s). When one key owns the name it returns a single
 // confirmed Extension with its version pinned by hashing the served public

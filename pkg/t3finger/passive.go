@@ -64,6 +64,8 @@ func (f *Fingerprinter) PassiveExtensions(ctx context.Context, target string) (*
 		return &e
 	}
 
+	lockVer := map[string]string{} // composer name -> exact version from composer.lock
+
 	// --- 1) HTML harvest: composer asset hashes + legacy keys ---------------
 	seenComposer := map[string]bool{}
 	for _, page := range passivePages {
@@ -106,6 +108,7 @@ func (f *Fingerprinter) PassiveExtensions(ctx context.Context, target string) (*
 	if r, err := f.getProbe(ctx, base+"/composer.lock"); err == nil && r != nil && r.Status == 200 && len(r.Body) > 0 {
 		res.Probed++
 		for _, p := range parseComposerLock(r.Body) {
+			lockVer[p.name] = p.version
 			e := Extension{
 				Package:       p.name,
 				ComposerName:  p.name,
@@ -148,6 +151,9 @@ func (f *Fingerprinter) PassiveExtensions(ctx context.Context, target string) (*
 		}
 		break
 	}
+
+	// --- 3.5) resolve collisions with composer.lock's exact version ---------
+	f.disambiguateByLock(byID, lockVer)
 
 	// --- 4) fill Key/Link/Author + Latest/Outdated for everything found -----
 	for _, e := range byID {

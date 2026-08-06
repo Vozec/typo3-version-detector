@@ -215,27 +215,25 @@ func printExtensions(res *t3finger.ExtResult, all bool) {
 		fmt.Fprintf(stdout, "  %s\n", cYellow("⚠ "+firstNote(res.Notes)))
 	}
 
-	// A cell carries plain text (for width) plus a colorizer.
-	type cell struct {
-		text  string
-		color func(string) string
-	}
 	type erow struct {
 		e      *t3finger.Extension
-		marker string
-		cells  []cell
+		plugin string
+		ver    string
+		vc     func(string) string
+		latest string
+		lc     func(string) string
+		cve    string
+		cc     func(string) string
+		author string
+		link   string
 	}
-
-	// Columns are shown only when at least one row populates them.
-	anyLatest, anyAuthor, anyLink := false, false, false
+	anyLatest, anyOutdated := false, false
 	for i := range res.Extensions {
 		e := &res.Extensions[i]
-		if !e.Confirmed && !all {
-			continue
+		if e.Confirmed || all {
+			anyLatest = anyLatest || e.Latest != ""
+			anyOutdated = anyOutdated || e.Outdated
 		}
-		anyLatest = anyLatest || e.Latest != ""
-		anyAuthor = anyAuthor || e.Author != "" || e.Owner != ""
-		anyLink = anyLink || e.Link != ""
 	}
 
 	var rows []erow
@@ -266,17 +264,13 @@ func printExtensions(res *t3finger.ExtResult, all bool) {
 				vc = cCyan
 			}
 		}
-		cells := []cell{{plugin, cBold}, {ver, vc}}
-		if anyLatest {
-			latest, lc := "-", cDim
-			if e.Latest != "" {
-				if e.Outdated {
-					latest, lc = "⇡ "+e.Latest, cYellow
-				} else {
-					latest, lc = e.Latest, cGreen
-				}
+		latest, lc := "-", cDim
+		if e.Latest != "" {
+			if e.Outdated {
+				latest, lc = "⇡ "+e.Latest, cYellow
+			} else {
+				latest, lc = e.Latest, cGreen
 			}
-			cells = append(cells, cell{latest, lc})
 		}
 		cve, cc := "-", cDim
 		switch {
@@ -285,72 +279,65 @@ func printExtensions(res *t3finger.ExtResult, all bool) {
 		case len(e.VulnsPossible) > 0:
 			cve, cc = fmt.Sprintf("~%d", len(e.VulnsPossible)), cYellow
 		}
-		cells = append(cells, cell{cve, cc})
-		if anyAuthor {
-			auth := e.Author
-			if auth == "" {
-				auth = e.Owner
-			}
-			if auth == "" {
-				auth = "-"
-			}
-			cells = append(cells, cell{auth, cDim})
+		author := e.Author
+		if author == "" {
+			author = e.Owner
 		}
-		if anyLink {
-			link := e.Link
-			if link == "" {
-				link = "-"
-			}
-			cells = append(cells, cell{link, cCyan})
-		}
-		marker := cGreen("+")
-		if e.Ambiguous {
-			marker = cYellow("?")
-		} else if !e.Confirmed {
-			marker = cYellow("?")
-		}
-		rows = append(rows, erow{e, marker, cells})
+		rows = append(rows, erow{e, plugin, ver, vc, latest, lc, cve, cc, author, e.Link})
 	}
 
 	if len(rows) > 0 {
-		headers := []string{"PLUGIN", "VERSION"}
+		// Compact, terminal-fit columns: VERSION/LATEST/CVE sized to data, PLUGIN
+		// takes the rest (middle-ellipsized). AUTHOR + LINK move to a wrapped
+		// sub-line so the table never overflows the screen.
+		wV, wL, wC, wP := len("VERSION"), len("LATEST"), len("CVE"), len("PLUGIN")
+		for _, r := range rows {
+			wV = maxi(wV, dispLen(r.ver))
+			wC = maxi(wC, dispLen(r.cve))
+			wL = maxi(wL, dispLen(r.latest))
+			wP = maxi(wP, dispLen(r.plugin))
+		}
+		fixed := 2 + wV + 2 + wC + 2 // marker+space + version col + cve col + gaps
 		if anyLatest {
-			headers = append(headers, "LATEST")
+			fixed += wL + 2
 		}
-		headers = append(headers, "CVE")
-		if anyAuthor {
-			headers = append(headers, "AUTHOR")
-		}
-		if anyLink {
-			headers = append(headers, "LINK")
-		}
-		widths := make([]int, len(headers))
-		for i, h := range headers {
-			widths[i] = len(h)
-		}
-		for _, r := range rows {
-			for i, c := range r.cells {
-				if w := dispLen(c.text); w > widths[i] {
-					widths[i] = w
-				}
+		if wP+fixed+2 > termWidth() {
+			if wP = termWidth() - fixed - 2; wP < 12 {
+				wP = 12
 			}
 		}
-		var hb strings.Builder
-		total := 0
-		for i, h := range headers {
-			hb.WriteString(cBold(pad(h, widths[i])))
-			hb.WriteString("  ")
-			total += widths[i] + 2
+		for i := range rows {
+			rows[i].plugin = ellipsizeMiddle(rows[i].plugin, wP)
 		}
-		fmt.Fprintf(stdout, "\n  %s\n", strings.TrimRight(hb.String(), " "))
-		fmt.Fprintf(stdout, "  %s\n", cDim(strings.Repeat("─", total)))
+
+		hdr := cBold(pad("PLUGIN", wP)) + "  " + cBold(pad("VERSION", wV)) + "  "
+		if anyLatest {
+			hdr += cBold(pad("LATEST", wL)) + "  "
+		}
+		hdr += cBold("CVE")
+		ruleW := wP + 2 + wV + 2 + wC + 2
+		if anyLatest {
+			ruleW += wL + 2
+		}
+		fmt.Fprintf(stdout, "\n  %s\n", hdr)
+		fmt.Fprintf(stdout, "  %s\n", cDim(strings.Repeat("─", mini(ruleW, termWidth()-2))))
 		for _, r := range rows {
-			var b strings.Builder
-			for i, c := range r.cells {
-				b.WriteString(c.color(pad(c.text, widths[i])))
-				b.WriteString("  ")
+			marker := cGreen("+")
+			if r.e.Ambiguous || !r.e.Confirmed {
+				marker = cYellow("?")
 			}
-			fmt.Fprintf(stdout, "%s %s\n", r.marker, strings.TrimRight(b.String(), " "))
+			line := marker + " " + cBold(pad(r.plugin, wP)) + "  " + r.vc(pad(r.ver, wV)) + "  "
+			if anyLatest {
+				line += r.lc(pad(r.latest, wL)) + "  "
+			}
+			line += r.cc(r.cve)
+			fmt.Fprintln(stdout, line)
+			if r.author != "" || r.link != "" {
+				printAuthorLink(4, r.author, r.link)
+			}
+		}
+		if anyOutdated {
+			fmt.Fprintf(stdout, "\n  %s\n", cDim("⇡ = newer release available (the installed version is behind LATEST)"))
 		}
 	}
 

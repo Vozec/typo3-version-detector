@@ -246,6 +246,68 @@ func kvWrap(label string, items []string, sep string) {
 	}
 }
 
+// ellipsizeMiddle shortens s to at most max visible runes, keeping the head and
+// tail (most informative for paths/names) with "…" in the middle.
+func ellipsizeMiddle(s string, max int) string {
+	if max < 5 {
+		max = 5
+	}
+	rs := []rune(s)
+	if len(rs) <= max {
+		return s
+	}
+	keep := max - 1
+	head := keep / 2
+	tail := keep - head
+	return string(rs[:head]) + "…" + string(rs[len(rs)-tail:])
+}
+
+// printAuthorLink prints a hanging-indented, terminal-width-wrapped line with the
+// author names (dim) and the link (cyan) — the author list flows onto extra
+// lines instead of forcing a wide column.
+func printAuthorLink(indent int, author, link string) {
+	width := termWidth() - indent
+	if width < 24 {
+		width = 24
+	}
+	pad := strings.Repeat(" ", indent)
+	type tok struct {
+		s string
+		c func(string) string
+	}
+	var toks []tok
+	for _, w := range strings.Fields(author) {
+		toks = append(toks, tok{w, cDim})
+	}
+	if link != "" {
+		if len(toks) > 0 {
+			toks = append(toks, tok{"·", cDim})
+		}
+		toks = append(toks, tok{link, cCyan})
+	}
+	if len(toks) == 0 {
+		return
+	}
+	line, plain := "", ""
+	flush := func() { fmt.Fprintf(stdout, "%s%s\n", pad, line); line, plain = "", "" }
+	for _, t := range toks {
+		if plain == "" {
+			line, plain = t.c(t.s), t.s
+			continue
+		}
+		if len(plain)+1+len(t.s) > width {
+			flush()
+			line, plain = t.c(t.s), t.s
+		} else {
+			line += " " + t.c(t.s)
+			plain += " " + t.s
+		}
+	}
+	if line != "" {
+		flush()
+	}
+}
+
 // dispLen counts visible runes, ignoring ANSI escapes.
 func dispLen(s string) int {
 	n, esc := 0, false

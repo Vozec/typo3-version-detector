@@ -7,6 +7,7 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"regexp"
 	"strings"
 	"sync"
 	"time"
@@ -298,15 +299,7 @@ func printAssets(r *t3finger.VersionResult) {
 
 	if len(matched) > 0 {
 		fmt.Fprintf(stdout, "\n  %s  %s\n", cBold("matched assets"), cDim("(these pinned the version)"))
-		for _, fp := range matched {
-			how := "content"
-			if fp.ByPath {
-				how = "path"
-			}
-			vs := fmt.Sprintf("%s → %s", cDim(fp.MD5[:8]), verSpan(fp.Versions))
-			fmt.Fprintf(stdout, "   %s %s\n      %s  %s\n",
-				cGreen("✓"), fp.Path, vs, cDim("("+how+", "+plural(len(fp.Versions), "1 version", fmt.Sprintf("%d versions", len(fp.Versions)))+")"))
-		}
+		printAssetTable(matched)
 	}
 
 	if served > 0 {
@@ -319,6 +312,75 @@ func printAssets(r *t3finger.VersionResult) {
 	if absent > 0 {
 		fmt.Fprintf(stdout, "  %s\n", cDim(fmt.Sprintf("%d probed paths were absent (404).", absent)))
 	}
+}
+
+// reAssetPrefix strips a leading /_assets/<32hex>/ so the file column shows just
+// the meaningful relative path.
+var reAssetPrefix = regexp.MustCompile(`^/?_assets/[0-9a-f]{32}/`)
+
+// printAssetTable renders one row per matched file, adapting the FILE column to
+// the terminal width (long paths are middle-ellipsized so nothing wraps).
+func printAssetTable(matched []t3finger.FileProbe) {
+	type row struct{ file, hash, span, how, n string }
+	rows := make([]row, 0, len(matched))
+	wH, wS, wHow, wN := len("MD5"), len("VERSIONS"), len("MATCH"), len("N")
+	for _, fp := range matched {
+		how := "content"
+		if fp.ByPath {
+			how = "path"
+		}
+		span := "?"
+		if len(fp.Versions) == 1 {
+			span = fp.Versions[0]
+		} else if len(fp.Versions) > 1 {
+			span = fp.Versions[0] + " – " + fp.Versions[len(fp.Versions)-1]
+		}
+		hash := fp.MD5
+		if len(hash) > 8 {
+			hash = hash[:8]
+		}
+		r := row{
+			file: reAssetPrefix.ReplaceAllString(fp.Path, ""),
+			hash: hash,
+			span: span, how: how, n: fmt.Sprintf("%d", len(fp.Versions)),
+		}
+		rows = append(rows, r)
+		wS = maxi(wS, len(r.span))
+		wHow = maxi(wHow, len(r.how))
+		wN = maxi(wN, len(r.n))
+	}
+	// FILE gets whatever width is left after the fixed columns; ellipsize to fit.
+	const indent, gaps = 4, 4 * 2 // "  ✓ " + 4 inter-column gaps of 2
+	fixed := indent + wH + wS + wHow + wN + gaps
+	wF := termWidth() - fixed
+	if wF < 16 {
+		wF = 16
+	}
+	for i := range rows {
+		if len(rows[i].file) > wF {
+			rows[i].file = ellipsizeMiddle(rows[i].file, wF)
+		}
+	}
+	fmt.Fprintf(stdout, "  %s %s  %s  %s  %s  %s\n", " ",
+		cBold(pad("FILE", wF)), cBold(pad("MD5", wH)), cBold(pad("VERSIONS", wS)), cBold(pad("MATCH", wHow)), cBold("N"))
+	fmt.Fprintf(stdout, "  %s\n", cDim(strings.Repeat("─", mini(termWidth()-2, wF+wH+wS+wHow+wN+gaps+1))))
+	for _, r := range rows {
+		fmt.Fprintf(stdout, "  %s %s  %s  %s  %s  %s\n",
+			cGreen("✓"), pad(r.file, wF), cDim(pad(r.hash, wH)), cCyan(pad(r.span, wS)), cDim(pad(r.how, wHow)), cDim(r.n))
+	}
+}
+
+func maxi(a, b int) int {
+	if a > b {
+		return a
+	}
+	return b
+}
+func mini(a, b int) int {
+	if a < b {
+		return a
+	}
+	return b
 }
 
 // verSpan renders a version list as "lo – hi" (or the single version).

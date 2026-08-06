@@ -27,6 +27,8 @@ var embeddedExtDB []byte
 //     version of the extension by hashing what the target serves.
 type ExtEntry struct {
 	Composer string                         `json:"composer,omitempty"`
+	Author   string                         `json:"author,omitempty"` // authorname from the TER index
+	Owner    string                         `json:"owner,omitempty"`  // ownerusername (TER account owning the key)
 	Latest   string                         `json:"latest,omitempty"`
 	Versions []string                       `json:"versions,omitempty"`
 	Requires map[string]string              `json:"requires,omitempty"`
@@ -45,8 +47,10 @@ type ExtProbeDB struct {
 	BuiltAt    string              `json:"builtAt,omitempty"`
 	Extensions map[string]ExtEntry `json:"extensions"`
 
-	composerIdx map[string]string `json:"-"` // composer name -> key
-	assetIdx    map[string]string `json:"-"` // md5("/vendor/<composer>/") -> key
+	composerIdx map[string]string   `json:"-"` // composer name -> canonical key
+	assetIdx    map[string]string   `json:"-"` // md5("/vendor/<composer>/") -> canonical key
+	candIdx     map[string][]string `json:"-"` // composer name -> ALL keys claiming it
+	assetComp   map[string]string   `json:"-"` // md5("/vendor/<composer>/") -> composer name
 }
 
 // ensureIndexes builds the composer-name and asset-hash reverse indexes once,
@@ -67,22 +71,54 @@ func (d *ExtProbeDB) ensureIndexes() {
 	sort.Strings(keys)
 	comp := make(map[string]string, len(keys))
 	best := make(map[string]int, len(keys))
+	cand := make(map[string][]string, len(keys))
 	for _, k := range keys {
 		e := d.Extensions[k]
 		if e.Composer == "" {
 			continue
 		}
+		cand[e.Composer] = append(cand[e.Composer], k)
 		if _, ok := comp[e.Composer]; !ok || len(e.Versions) > best[e.Composer] {
 			comp[e.Composer] = k
 			best[e.Composer] = len(e.Versions)
 		}
 	}
-	asset := make(map[string]string, len(comp))
-	for composer, key := range comp {
-		sum := md5.Sum([]byte("/vendor/" + composer + "/"))
-		asset[hex.EncodeToString(sum[:])] = key
+	// Order each candidate list canonical-first (most versions, then key), so
+	// callers can present alternatives with the likeliest real package leading.
+	for composer, ks := range cand {
+		sort.SliceStable(ks, func(i, j int) bool {
+			ni, nj := len(d.Extensions[ks[i]].Versions), len(d.Extensions[ks[j]].Versions)
+			if ni != nj {
+				return ni > nj
+			}
+			return ks[i] < ks[j]
+		})
+		cand[composer] = ks
 	}
-	d.composerIdx, d.assetIdx = comp, asset
+	asset := make(map[string]string, len(comp))
+	assetComp := make(map[string]string, len(comp))
+	for composer, key := range comp {
+		h := hex.EncodeToString(md5Sum("/vendor/" + composer + "/"))
+		asset[h] = key
+		assetComp[h] = composer
+	}
+	d.composerIdx, d.assetIdx, d.candIdx, d.assetComp = comp, asset, cand, assetComp
+}
+
+func md5Sum(s string) []byte { sum := md5.Sum([]byte(s)); return sum[:] }
+
+// CandidatesForComposer returns every extension key that declares the given
+// composer name — more than one when forks/dummies squat the same name. Ordered
+// canonical-first (most versions). Empty if the name is unknown.
+func (d *ExtProbeDB) CandidatesForComposer(name string) []string {
+	d.ensureIndexes()
+	return d.candIdx[name]
+}
+
+// ComposerForAssetHash returns the composer name behind a /_assets/<md5>/ hash.
+func (d *ExtProbeDB) ComposerForAssetHash(md5hex string) string {
+	d.ensureIndexes()
+	return d.assetComp[md5hex]
 }
 
 // ByComposer returns the entry for a Packagist name (vendor/pkg), or nil. Used

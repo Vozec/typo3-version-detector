@@ -215,21 +215,31 @@ func printExtensions(res *t3finger.ExtResult, all bool) {
 		fmt.Fprintf(stdout, "  %s\n", cYellow("⚠ "+firstNote(res.Notes)))
 	}
 
-	// Collect rows (confirmed first, then unconfirmed if -all).
-	type erow struct {
-		e        *t3finger.Extension
-		plugin   string
-		version  string
-		vColor   func(string) string
-		latest   string
-		lColor   func(string) string
-		cve      string
-		cColor   func(string) string
-		evidence string
+	// A cell carries plain text (for width) plus a colorizer.
+	type cell struct {
+		text  string
+		color func(string) string
 	}
+	type erow struct {
+		e      *t3finger.Extension
+		marker string
+		cells  []cell
+	}
+
+	// Columns are shown only when at least one row populates them.
+	anyLatest, anyAuthor, anyLink := false, false, false
+	for i := range res.Extensions {
+		e := &res.Extensions[i]
+		if !e.Confirmed && !all {
+			continue
+		}
+		anyLatest = anyLatest || e.Latest != ""
+		anyAuthor = anyAuthor || e.Author != "" || e.Owner != ""
+		anyLink = anyLink || e.Link != ""
+	}
+
 	var rows []erow
-	anyLatest := false
-	confirmed, unconfirmed := 0, 0
+	confirmed, unconfirmed, ambiguous := 0, 0, 0
 	for i := range res.Extensions {
 		e := &res.Extensions[i]
 		if e.Confirmed {
@@ -240,6 +250,13 @@ func printExtensions(res *t3finger.ExtResult, all bool) {
 				continue
 			}
 		}
+		if e.Ambiguous {
+			ambiguous++
+		}
+		plugin := e.Package
+		if e.Ambiguous && e.Key != "" { // the shared composer name needs the key to tell siblings apart
+			plugin = e.Package + " (" + e.Key + ")"
+		}
 		ver, vc := "?", cDim
 		if e.Version != "" {
 			ver = e.Version
@@ -249,14 +266,17 @@ func printExtensions(res *t3finger.ExtResult, all bool) {
 				vc = cCyan
 			}
 		}
-		latest, lc := "-", cDim
-		if e.Latest != "" {
-			anyLatest = true
-			if e.Outdated {
-				latest, lc = "⇡ "+e.Latest, cYellow
-			} else {
-				latest, lc = e.Latest, cGreen
+		cells := []cell{{plugin, cBold}, {ver, vc}}
+		if anyLatest {
+			latest, lc := "-", cDim
+			if e.Latest != "" {
+				if e.Outdated {
+					latest, lc = "⇡ "+e.Latest, cYellow
+				} else {
+					latest, lc = e.Latest, cGreen
+				}
 			}
+			cells = append(cells, cell{latest, lc})
 		}
 		cve, cc := "-", cDim
 		switch {
@@ -265,57 +285,85 @@ func printExtensions(res *t3finger.ExtResult, all bool) {
 		case len(e.VulnsPossible) > 0:
 			cve, cc = fmt.Sprintf("~%d", len(e.VulnsPossible)), cYellow
 		}
-		ev := e.Evidence
-		if e.Location != "" {
-			ev = e.Location
+		cells = append(cells, cell{cve, cc})
+		if anyAuthor {
+			auth := e.Author
+			if auth == "" {
+				auth = e.Owner
+			}
+			if auth == "" {
+				auth = "-"
+			}
+			cells = append(cells, cell{auth, cDim})
 		}
-		if !e.Confirmed {
-			ev = "stale symlink?"
+		if anyLink {
+			link := e.Link
+			if link == "" {
+				link = "-"
+			}
+			cells = append(cells, cell{link, cCyan})
 		}
-		rows = append(rows, erow{e, e.Package, ver, vc, latest, lc, cve, cc, ev})
+		marker := cGreen("+")
+		if e.Ambiguous {
+			marker = cYellow("?")
+		} else if !e.Confirmed {
+			marker = cYellow("?")
+		}
+		rows = append(rows, erow{e, marker, cells})
 	}
 
 	if len(rows) > 0 {
-		// Column widths from plain text. The LATEST column is shown only when at
-		// least one extension has a known newest release.
-		wP, wV, wL, wC := len("PLUGIN"), len("VERSION"), len("LATEST"), len("CVE")
-		for _, r := range rows {
-			wP, wV, wC = max(wP, len(r.plugin)), max(wV, len(r.version)), max(wC, len(r.cve))
-			wL = max(wL, dispLen(r.latest))
-		}
+		headers := []string{"PLUGIN", "VERSION"}
 		if anyLatest {
-			fmt.Fprintf(stdout, "\n  %s  %s  %s  %s  %s\n",
-				cBold(pad("PLUGIN", wP)), cBold(pad("VERSION", wV)), cBold(pad("LATEST", wL)), cBold(pad("CVE", wC)), cBold("EVIDENCE"))
-			fmt.Fprintf(stdout, "  %s\n", cDim(strings.Repeat("─", wP+wV+wL+wC+12+8)))
-			for _, r := range rows {
-				mark := cGreen("+")
-				if !r.e.Confirmed {
-					mark = cYellow("?")
+			headers = append(headers, "LATEST")
+		}
+		headers = append(headers, "CVE")
+		if anyAuthor {
+			headers = append(headers, "AUTHOR")
+		}
+		if anyLink {
+			headers = append(headers, "LINK")
+		}
+		widths := make([]int, len(headers))
+		for i, h := range headers {
+			widths[i] = len(h)
+		}
+		for _, r := range rows {
+			for i, c := range r.cells {
+				if w := dispLen(c.text); w > widths[i] {
+					widths[i] = w
 				}
-				fmt.Fprintf(stdout, "%s %s  %s  %s  %s  %s\n",
-					mark, pad(r.plugin, wP), r.vColor(pad(r.version, wV)), r.lColor(pad(r.latest, wL)), r.cColor(pad(r.cve, wC)), cDim(r.evidence))
 			}
-		} else {
-			fmt.Fprintf(stdout, "\n  %s  %s  %s  %s\n",
-				cBold(pad("PLUGIN", wP)), cBold(pad("VERSION", wV)), cBold(pad("CVE", wC)), cBold("EVIDENCE"))
-			fmt.Fprintf(stdout, "  %s\n", cDim(strings.Repeat("─", wP+wV+wC+10+8)))
-			for _, r := range rows {
-				mark := cGreen("+")
-				if !r.e.Confirmed {
-					mark = cYellow("?")
-				}
-				fmt.Fprintf(stdout, "%s %s  %s  %s  %s\n",
-					mark, pad(r.plugin, wP), r.vColor(pad(r.version, wV)), r.cColor(pad(r.cve, wC)), cDim(r.evidence))
+		}
+		var hb strings.Builder
+		total := 0
+		for i, h := range headers {
+			hb.WriteString(cBold(pad(h, widths[i])))
+			hb.WriteString("  ")
+			total += widths[i] + 2
+		}
+		fmt.Fprintf(stdout, "\n  %s\n", strings.TrimRight(hb.String(), " "))
+		fmt.Fprintf(stdout, "  %s\n", cDim(strings.Repeat("─", total)))
+		for _, r := range rows {
+			var b strings.Builder
+			for i, c := range r.cells {
+				b.WriteString(c.color(pad(c.text, widths[i])))
+				b.WriteString("  ")
 			}
+			fmt.Fprintf(stdout, "%s %s\n", r.marker, strings.TrimRight(b.String(), " "))
 		}
 	}
+
+	// Ambiguity notes: several extensions share one composer name; only one is
+	// installed and the served files couldn't single it out.
+	printAmbiguityNotes(res.Extensions)
 
 	// Per-plugin CVE detail (only for plugins that have any).
 	for _, r := range rows {
 		if len(r.e.Vulns) == 0 && len(r.e.VulnsPossible) == 0 {
 			continue
 		}
-		fmt.Fprintf(stdout, "\n  %s\n", cBold(r.plugin))
+		fmt.Fprintf(stdout, "\n  %s\n", cBold(r.e.Package))
 		for _, v := range r.e.Vulns {
 			fmt.Fprintf(stdout, "     %s %s\n", cRed("⚠"), advLine(v))
 		}
@@ -329,6 +377,9 @@ func printExtensions(res *t3finger.ExtResult, all bool) {
 	}
 
 	fmt.Fprintf(stdout, "\n%s probed %d, %s %d confirmed", cDim("›"), res.Probed, cGreen("●"), confirmed)
+	if ambiguous > 0 {
+		fmt.Fprintf(stdout, ", %s %d ambiguous", cYellow("?"), ambiguous)
+	}
 	if unconfirmed > 0 {
 		hint := ""
 		if !all {
@@ -340,6 +391,48 @@ func printExtensions(res *t3finger.ExtResult, all bool) {
 		fmt.Fprintf(stdout, ", %s %d errors", cRed("✗"), res.Errors)
 	}
 	fmt.Fprintln(stdout)
+}
+
+// printAmbiguityNotes explains each set of extensions that share a composer name
+// where the served files couldn't determine which one is installed.
+func printAmbiguityNotes(exts []t3finger.Extension) {
+	groups := map[string][]t3finger.Extension{}
+	var order []string
+	for _, e := range exts {
+		if !e.Ambiguous {
+			continue
+		}
+		if _, ok := groups[e.ComposerName]; !ok {
+			order = append(order, e.ComposerName)
+		}
+		groups[e.ComposerName] = append(groups[e.ComposerName], e)
+	}
+	for _, name := range order {
+		g := groups[name]
+		fmt.Fprintf(stdout, "\n  %s %s\n", cYellow("?"),
+			cBold(name)+cDim(fmt.Sprintf(" — %d extensions share this composer name; only one is installed:", len(g))))
+		for _, e := range g {
+			who := e.Author
+			if who == "" {
+				who = "unknown author"
+			}
+			if e.Owner != "" {
+				who += " · @" + e.Owner // the TER account — the real disambiguator
+			}
+			ver := ""
+			if e.Version != "" {
+				src := e.VersionSource
+				if src == "" {
+					src = "detected"
+				}
+				ver = cCyan(" v"+e.Version) + cDim(" ("+src+")")
+			}
+			fmt.Fprintf(stdout, "      %s %s %s%s\n", cDim("•"), cBold(e.Key), cDim("by "+who), ver)
+			if e.Link != "" {
+				fmt.Fprintf(stdout, "        %s\n", cCyan(e.Link))
+			}
+		}
+	}
 }
 
 // mergeExtResults folds passively-discovered extensions into the brute-force

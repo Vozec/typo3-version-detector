@@ -38,13 +38,19 @@ func (f *Fingerprinter) PassiveExtensions(ctx context.Context, target string) (*
 		return nil, err
 	}
 	res := &ExtResult{Target: base}
-	byID := map[string]*Extension{} // dedupe by composer name (composer) or key (legacy)
+	byID := map[string]*Extension{} // dedupe by TER key (unique) or composer/key
 
-	upsert := func(e Extension) *Extension {
-		id := e.ComposerName
-		if id == "" {
-			id = e.Package
+	idOf := func(e Extension) string {
+		if e.Key != "" {
+			return "K:" + e.Key // unique — keeps ambiguous siblings distinct
 		}
+		if e.ComposerName != "" {
+			return "c:" + e.ComposerName
+		}
+		return "p:" + e.Package
+	}
+	upsert := func(e Extension) *Extension {
+		id := idOf(e)
 		if id == "" {
 			return nil
 		}
@@ -59,6 +65,7 @@ func (f *Fingerprinter) PassiveExtensions(ctx context.Context, target string) (*
 	}
 
 	// --- 1) HTML harvest: composer asset hashes + legacy keys ---------------
+	seenComposer := map[string]bool{}
 	for _, page := range passivePages {
 		r, err := f.get(ctx, base+page)
 		res.Probed++
@@ -67,28 +74,22 @@ func (f *Fingerprinter) PassiveExtensions(ctx context.Context, target string) (*
 		}
 		body := r.Body
 		for _, m := range reAssetHash.FindAllSubmatch(body, -1) {
-			h := string(m[1])
-			key, composer, ok := f.ExtProbes.IdentifyAssetHash(h)
-			if !ok {
-				continue // an /_assets/ hash we can't map (core, or unknown package)
+			composer := f.ExtProbes.ComposerForAssetHash(string(m[1]))
+			if composer == "" || seenComposer[composer] {
+				continue // unmappable hash (core / unknown), or already resolved
 			}
-			e := Extension{
-				Package:      composer,
-				ComposerName: composer,
-				Confirmed:    true,
-				Status:       200,
-				AssetURL:     base + "/_assets/" + h + "/",
-				Evidence:     "HTML /_assets/" + h[:8] + "…",
+			seenComposer[composer] = true
+			// Collision-aware: resolve which key is really installed by hashing
+			// the served files; may return several flagged Ambiguous.
+			for _, e := range f.resolveComposerAsset(ctx, base, composer, "") {
+				upsert(e)
 			}
-			if entry, ok := f.ExtProbes.Extensions[key]; ok {
-				e.Requires = entry.Requires
-			}
-			upsert(e)
 		}
 		for _, m := range rePassiveLegacyKey.FindAllSubmatch(body, -1) {
 			key := string(m[1])
 			e := Extension{
 				Package:   key,
+				Key:       key,
 				Confirmed: true,
 				Status:    200,
 				Location:  "typo3conf/ext/" + key + "/",
@@ -96,7 +97,6 @@ func (f *Fingerprinter) PassiveExtensions(ctx context.Context, target string) (*
 			}
 			if entry, ok := f.ExtProbes.Extensions[key]; ok {
 				e.ComposerName = entry.Composer
-				e.Requires = entry.Requires
 			}
 			upsert(e)
 		}
@@ -109,21 +109,18 @@ func (f *Fingerprinter) PassiveExtensions(ctx context.Context, target string) (*
 			e := Extension{
 				Package:       p.name,
 				ComposerName:  p.name,
+				Key:           f.ExtProbes.KeyForComposer(p.name),
 				Confirmed:     true,
 				Status:        200,
 				Version:       p.version,
 				VersionSource: "composer.lock",
 				Evidence:      "exposed /composer.lock",
 			}
-			if key := f.ExtProbes.KeyForComposer(p.name); key != "" {
-				if entry, ok := f.ExtProbes.Extensions[key]; ok {
-					e.Requires = entry.Requires
-					e.AssetURL = AssetURL(base, p.name)
-				}
-			}
 			ex := upsert(e)
-			if ex != nil && ex.Version == "" { // enrich a hash-only hit with the exact version
-				ex.Version, ex.VersionSource = p.version, "composer.lock"
+			// composer.lock is authoritative for the version — override a fuzzy
+			// hash range on an already-found hit with the exact value.
+			if ex != nil && (ex.Version == "" || strings.Contains(ex.Version, " ")) {
+				ex.Version, ex.VersionSource, ex.VersionExact, ex.VersionCandidates = p.version, "composer.lock", false, nil
 			}
 		}
 	}
@@ -138,6 +135,7 @@ func (f *Fingerprinter) PassiveExtensions(ctx context.Context, target string) (*
 		for _, key := range parsePackageStates(r.Body) {
 			e := Extension{
 				Package:   key,
+				Key:       key,
 				Confirmed: true,
 				Status:    200,
 				Location:  "typo3conf/ext/" + key + "/",
@@ -145,32 +143,23 @@ func (f *Fingerprinter) PassiveExtensions(ctx context.Context, target string) (*
 			}
 			if entry, ok := f.ExtProbes.Extensions[key]; ok {
 				e.ComposerName = entry.Composer
-				e.Requires = entry.Requires
 			}
 			upsert(e)
 		}
 		break
 	}
 
-	// --- 4) version + freshness for what we found (no metadata version yet) -
+	// --- 4) fill Key/Link/Author + Latest/Outdated for everything found -----
 	for _, e := range byID {
-		if e.Version == "" && e.AssetURL != "" {
-			if entry := f.ExtProbes.ByComposer(e.ComposerName); entry != nil {
-				if cands := f.extVersionComposer(ctx, e.AssetURL, entry); len(cands) > 0 {
-					e.VersionCandidates = cands
-					e.VersionSource, e.VersionExact = "static-file hash", true
-					if len(cands) == 1 {
-						e.Version = cands[0]
-					} else {
-						e.Version = cands[0] + " – " + cands[len(cands)-1]
-					}
-				}
-			}
-		}
-		f.annotateExtFreshness(e, f.ExtProbes.ByComposer(e.ComposerName))
+		f.finalizeExt(e)
 		res.Extensions = append(res.Extensions, *e)
 	}
-	sort.Slice(res.Extensions, func(i, j int) bool { return res.Extensions[i].Package < res.Extensions[j].Package })
+	sort.Slice(res.Extensions, func(i, j int) bool {
+		if res.Extensions[i].Package != res.Extensions[j].Package {
+			return res.Extensions[i].Package < res.Extensions[j].Package
+		}
+		return res.Extensions[i].Key < res.Extensions[j].Key
+	})
 	return res, nil
 }
 

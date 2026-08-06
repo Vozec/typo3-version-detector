@@ -50,6 +50,19 @@ type Extension struct {
 	// VersionCandidates is the full candidate set when Version is a range (from
 	// static-file hashing) — used for accurate per-candidate CVE assessment.
 	VersionCandidates []string `json:"versionCandidates,omitempty"`
+	// Key is the TER extension key (differs from the composer name; unique even
+	// when several keys share a composer name). Drives the canonical Link.
+	Key string `json:"key,omitempty"`
+	// Author / Owner identify who ships this extension — the disambiguator when
+	// several extensions declare the same composer name.
+	Author string `json:"author,omitempty"`
+	Owner  string `json:"owner,omitempty"`
+	// Link is the canonical TER extension page (by key).
+	Link string `json:"link,omitempty"`
+	// Ambiguous is set when this is one of several extensions that share the
+	// asset path (same composer name) and the served files couldn't single one
+	// out — only one of the Ambiguous siblings is actually installed.
+	Ambiguous bool `json:"ambiguous,omitempty"`
 	// Latest is the newest published version of this extension: from the DB
 	// snapshot (built at DB-build time) or refreshed live with --live-versions.
 	Latest string `json:"latest,omitempty"`
@@ -181,34 +194,34 @@ func (f *Fingerprinter) EnumerateExtensions(ctx context.Context, target string, 
 	sort.Slice(hits, func(i, j int) bool { return hits[i].pkg < hits[j].pkg })
 	for _, h := range hits {
 		assetURL := AssetURL(base, h.pkg)
-		ext := Extension{Package: h.pkg, AssetURL: assetURL, Status: h.status, ComposerName: h.pkg}
+		// Confirm the hit is a real install (not a dangling symlink) via a
+		// well-known subpath.
+		confirmed, evidence := false, ""
 		for _, sub := range confirmPaths {
 			st, sz, ok := f.head(ctx, assetURL+sub)
 			if ok && (st != cs || sz != csz) {
-				ext.Confirmed = true
-				ext.Evidence = sub
+				confirmed, evidence = true, sub
 				break
 			}
 		}
-		// Version by static-file hash: the extension's public assets live under
-		// the same /_assets/<md5>/ prefix (served at <assetURL><pathAfterPublic>),
-		// so we can hash the discriminating files just like a legacy install.
-		entry := f.ExtProbes.ByComposer(h.pkg)
-		if entry != nil {
-			ext.Requires = entry.Requires
-			if cands := f.extVersionComposer(ctx, assetURL, entry); len(cands) > 0 {
-				ext.Confirmed = true
-				ext.VersionCandidates = cands
-				ext.VersionSource, ext.VersionExact = "static-file hash", true
-				if len(cands) == 1 {
-					ext.Version = cands[0]
-				} else {
-					ext.Version = cands[0] + " – " + cands[len(cands)-1]
+		// Version by static-file hash, collision-aware: when several keys claim
+		// this composer name, resolveComposerAsset hashes the served files to
+		// pick the installed one (or flags all as ambiguous).
+		exts := f.resolveComposerAsset(ctx, base, h.pkg, evidence)
+		if len(exts) == 0 {
+			exts = []Extension{{Package: h.pkg, ComposerName: h.pkg, AssetURL: assetURL, Status: h.status}}
+			f.finalizeExt(&exts[0])
+		}
+		for i := range exts {
+			exts[i].Status = h.status
+			if confirmed {
+				exts[i].Confirmed = true
+				if exts[i].Evidence == "" {
+					exts[i].Evidence = evidence
 				}
 			}
+			res.Extensions = append(res.Extensions, exts[i])
 		}
-		f.annotateExtFreshness(&ext, entry)
-		res.Extensions = append(res.Extensions, ext)
 	}
 	return res, nil
 }

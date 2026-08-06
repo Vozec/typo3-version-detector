@@ -92,40 +92,88 @@ var (
 	reExtBlock   = regexp.MustCompile(`(?s)<extension extensionkey="([^"]+)">(.*?)</extension>`)
 	reVerBlock   = regexp.MustCompile(`(?s)<version version="([^"]+)">(.*?)</version>`)
 	reComposerJS = regexp.MustCompile(`"name"\s*:\s*"([a-z0-9][a-z0-9._-]*/[a-z0-9][a-z0-9._-]*)"`)
+	reAuthorName = regexp.MustCompile(`<authorname>([^<]*)</authorname>`)
+	reAuthorCo   = regexp.MustCompile(`<authorcompany>([^<]*)</authorcompany>`)
+	reOwnerUser  = regexp.MustCompile(`<ownerusername>([^<]*)</ownerusername>`)
 )
 
 // allVersions downloads the TER catalogue and returns key -> sorted version list.
 func (b *ExtBuilder) allVersions(ctx context.Context) (map[string][]string, error) {
+	vers, _, err := b.catalogue(ctx)
+	return vers, err
+}
+
+// CatMeta is the catalogue metadata for one extension key (identity that lives
+// in the TER index itself, so it is fetched without any per-version download).
+type CatMeta struct {
+	Author string // authorname (fall back to authorcompany)
+	Owner  string // ownerusername — the TER account that owns the key
+}
+
+// catalogue downloads the TER extensions index and returns, per key, its sorted
+// version list and its metadata (author/owner from the newest version block).
+func (b *ExtBuilder) catalogue(ctx context.Context) (map[string][]string, map[string]CatMeta, error) {
 	req, _ := http.NewRequestWithContext(ctx, http.MethodGet, terExtensionsURL, nil)
 	req.Header.Set("User-Agent", "t3scan-buildextdb/1.0")
 	resp, err := b.HTTP.Do(req)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != 200 {
-		return nil, fmt.Errorf("TER: HTTP %d", resp.StatusCode)
+		return nil, nil, fmt.Errorf("TER: HTTP %d", resp.StatusCode)
 	}
 	gz, err := gzip.NewReader(resp.Body)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	defer gz.Close()
 	data, err := io.ReadAll(io.LimitReader(gz, 256<<20))
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
-	out := map[string][]string{}
+	vers := map[string][]string{}
+	meta := map[string]CatMeta{}
 	for _, em := range reExtBlock.FindAllSubmatch(data, -1) {
 		key := string(em[1])
-		var vers []string
+		var vs []string
 		for _, vm := range reVerBlock.FindAllSubmatch(em[2], -1) {
-			vers = append(vers, string(vm[1]))
+			vs = append(vs, string(vm[1]))
 		}
-		sort.Sort(byVersion(vers))
-		out[key] = vers
+		sort.Sort(byVersion(vs))
+		vers[key] = vs
+		meta[key] = CatMeta{Author: lastNonEmpty(reAuthorName, em[2], reAuthorCo), Owner: lastNonEmpty(reOwnerUser, em[2], nil)}
 	}
-	return out, nil
+	return vers, meta, nil
+}
+
+// lastNonEmpty returns the last non-empty capture of re in block (the newest
+// version's value; the index lists versions oldest-first), falling back to the
+// last capture of `alt` if every primary match is blank.
+func lastNonEmpty(re *regexp.Regexp, block []byte, alt *regexp.Regexp) string {
+	pick := func(r *regexp.Regexp) string {
+		out := ""
+		for _, m := range r.FindAllSubmatch(block, -1) {
+			if v := strings.TrimSpace(string(m[1])); v != "" {
+				out = v
+			}
+		}
+		return out
+	}
+	if v := pick(re); v != "" {
+		return v
+	}
+	if alt != nil {
+		return pick(alt)
+	}
+	return ""
+}
+
+// CatalogueAuthors downloads the TER index and returns key -> author/owner meta.
+// Used to enrich an existing DB without re-downloading any package.
+func (b *ExtBuilder) CatalogueAuthors(ctx context.Context) (map[string]CatMeta, error) {
+	_, meta, err := b.catalogue(ctx)
+	return meta, err
 }
 
 // BuildExtProbeDB builds full records for the given extension keys.

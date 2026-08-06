@@ -33,6 +33,7 @@ func runBuildExtDB(args []string) {
 	maxV := fs.Int("maxversions", 0, "hash only the N most-recent versions per extension (0 = all; controls depth)")
 	update := fs.Bool("update", false, "incremental: load the raw DB and fetch only new versions / new extensions")
 	merge := fs.Bool("merge", false, "alias for -update (kept for compatibility)")
+	authorsOnly := fs.Bool("authors-only", false, "enrich the existing DB with author/owner from the TER index only (no package downloads)")
 	conc := fs.Int("c", 8, "concurrent downloads")
 	hours := fs.Int("timeout-hours", 8, "overall timeout in hours")
 	_ = fs.Parse(args)
@@ -61,6 +62,45 @@ func runBuildExtDB(args []string) {
 
 	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(*hours)*time.Hour)
 	defer cancel()
+
+	// Authors-only: enrich the existing raw DB with author/owner from the TER
+	// index (one download, no packages), then re-prune the embed DB.
+	if *authorsOnly {
+		raw2, err := t3finger.LoadExtProbeDBFile(*raw)
+		if err != nil || raw2 == nil || len(raw2.Extensions) == 0 {
+			fatal(fmt.Errorf("authors-only needs an existing raw DB at %s: %v", *raw, err))
+		}
+		fmt.Fprintln(os.Stderr, "[buildextdb] fetching author/owner from the TER index…")
+		meta, err := b.CatalogueAuthors(ctx)
+		if err != nil {
+			fatal(err)
+		}
+		n := 0
+		for k, e := range raw2.Extensions {
+			m, ok := meta[k]
+			if !ok {
+				continue
+			}
+			if m.Author != "" {
+				e.Author = m.Author
+			}
+			if m.Owner != "" {
+				e.Owner = m.Owner
+			}
+			if m.Author != "" || m.Owner != "" {
+				raw2.Extensions[k] = e
+				n++
+			}
+		}
+		if err := writeDBFile(*raw, raw2); err != nil {
+			fatal(err)
+		}
+		if err := writeDBFile(*out, t3finger.PruneForEmbed(raw2)); err != nil {
+			fatal(err)
+		}
+		fmt.Fprintf(os.Stderr, "[buildextdb] enriched %d/%d extensions with author/owner; rebuild the binary to embed\n", n, len(raw2.Extensions))
+		return
+	}
 
 	// Load the existing raw DB for an incremental update (start empty for a full
 	// build). New extensions and new versions are the only downloads.

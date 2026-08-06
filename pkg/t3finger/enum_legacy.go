@@ -220,6 +220,7 @@ func (f *Fingerprinter) EnumerateExtensionsLegacy(ctx context.Context, target st
 		extBase := base + "/" + h.loc + h.key + "/"
 		ext := Extension{
 			Package:   h.key,
+			Key:       h.key,
 			Location:  h.loc + h.key + "/",
 			Status:    h.status,
 			Confirmed: true,
@@ -265,7 +266,8 @@ func (f *Fingerprinter) EnumerateExtensionsLegacy(ctx context.Context, target st
 				}
 			}
 		}
-		f.annotateExtFreshness(&ext, entry)
+		_ = entry
+		f.finalizeExt(&ext)
 		res.Extensions = append(res.Extensions, ext)
 	}
 	return res, nil

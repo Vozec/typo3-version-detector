@@ -37,7 +37,7 @@ type UpdateStats struct {
 // fast and removes the long tail of version-heavy plugins.
 func (b *ExtBuilder) UpdateExtDB(ctx context.Context, existing *ExtProbeDB, keys []string, stamp string) (*ExtProbeDB, UpdateStats, error) {
 	b.log("resolving versions from TER…")
-	catalogue, err := b.allVersions(ctx)
+	catalogue, meta, err := b.catalogue(ctx)
 	if err != nil {
 		return nil, UpdateStats{}, err
 	}
@@ -205,6 +205,19 @@ func (b *ExtBuilder) UpdateExtDB(ctx context.Context, existing *ExtProbeDB, keys
 		} else {
 			out.Extensions[p.key] = *e
 			stats.Updated++
+		}
+	}
+
+	// Stamp author/owner from the TER index on every entry (index-only, free).
+	for k, e := range out.Extensions {
+		if m, ok := meta[k]; ok {
+			if m.Author != "" {
+				e.Author = m.Author
+			}
+			if m.Owner != "" {
+				e.Owner = m.Owner
+			}
+			out.Extensions[k] = e
 		}
 	}
 

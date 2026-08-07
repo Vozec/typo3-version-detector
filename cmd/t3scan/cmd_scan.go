@@ -40,7 +40,7 @@ func runScan(args []string) {
 	fs.BoolVar(force, "force", false, "alias for -f")
 	listFile := fs.String("l", "", "read targets from a file (one URL per line; '-' for stdin)")
 	output := fs.String("o", "", "output file (single target) or directory (list); created if missing")
-	timeout := fs.Duration("timeout", 20*time.Minute, "overall timeout")
+	timeout := fs.Duration("timeout", 20*time.Minute, "per-target timeout")
 	fs.Usage = func() {
 		fmt.Fprintf(os.Stderr, "Full TYPO3 scan: core version + CVEs, optionally extensions.\n\nUsage:\n  t3scan scan [flags] <url|file> [...]\n  cat urls.txt | t3scan scan -ext -o out/\n\nFlags:\n")
 		fs.PrintDefaults()
@@ -69,13 +69,14 @@ func runScan(args []string) {
 		f.Advisories = nil
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), *timeout)
-	defer cancel()
-
 	// --live-versions: pull the current release feed so the core "latest" is live
 	// rather than the embedded snapshot (extensions are refreshed per-target).
+	// Its own short deadline — it must not eat into any target's budget.
 	if *live {
-		if rel, err := t3finger.FetchReleases(ctx); err == nil && rel != nil {
+		lctx, lcancel := context.WithTimeout(context.Background(), 30*time.Second)
+		rel, err := t3finger.FetchReleases(lctx)
+		lcancel()
+		if err == nil && rel != nil {
 			f.Releases = rel
 		} else if !*asJSON {
 			fmt.Fprintln(os.Stderr, cYellow("⚠ live release feed unavailable; using embedded snapshot"))
@@ -84,11 +85,17 @@ func runScan(args []string) {
 
 	opts := scanOpts{doExt: *doExt, mode: *mode, wordlist: *wordlist, extSel: *extSel, cve: *cve, asJSON: *asJSON, force: *force, live: *live}
 	reports := make([]*scanReport, 0, len(targets))
+	// Each target gets its own deadline. A shared one would let the first few
+	// hosts (especially under -ext, ~9k probes each) burn the whole budget, and
+	// every host after it would silently report "not detected as TYPO3" without
+	// a single request having been sent.
 	for _, target := range targets {
 		if !*asJSON && len(targets) > 1 {
 			fmt.Fprintf(os.Stderr, "%s scanning %s\n", cDim("›"), target)
 		}
+		ctx, cancel := context.WithTimeout(context.Background(), *timeout)
 		reports = append(reports, scanOneTarget(ctx, f, target, opts))
+		cancel()
 	}
 
 	// Render one report to the current stdout writer (human or JSON).
